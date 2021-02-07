@@ -3,7 +3,7 @@ set -e
 
 if [ -z "$CONFIG" ] ; then
 	echo "\$CONFIG not set. Please set it to the variant to build."
-	echo "Valid values are: gcw0, rs90, lepus, installer"
+	echo "Valid values are: gcw0, rs90, rzx27, lepus, installer"
 	exit 1
 fi
 

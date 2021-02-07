@@ -26,6 +26,9 @@ case "${CONFIG}" in
 		ln -sf rs90.dtb ${BUILD_DIR}/opk/${CONFIG}/v21.dtb
 		ln -sf rs90.dtb ${BUILD_DIR}/opk/${CONFIG}/v30.dtb
 		;;
+	rzx27)
+		ln -sf rzx27.dtb ${BUILD_DIR}/opk/${CONFIG}/v10_lcd_uc8230.dtb
+		;;
 	gcw0)
 		ln -sf gcw0_proto.dtb ${BUILD_DIR}/opk/${CONFIG}/v11_ddr2_256mb.dtb
 		ln -sf gcw0.dtb ${BUILD_DIR}/opk/${CONFIG}/v20_mddr_512mb.dtb

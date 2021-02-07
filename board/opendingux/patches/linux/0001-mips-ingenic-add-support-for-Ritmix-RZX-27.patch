@@ -1,0 +1,424 @@
+From f898235794fdc69483efc47356f1ba2e80dc406b Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Sun, 7 Feb 2021 14:12:28 +0300
+Subject: [PATCH] mips: ingenic: add support for Ritmix RZX-27
+
+---
+ arch/mips/boot/dts/ingenic/Makefile  |   1 +
+ arch/mips/boot/dts/ingenic/rzx27.dts | 377 +++++++++++++++++++++++++++++++++++
+ arch/mips/ingenic/Kconfig            |   4 +
+ 3 files changed, 382 insertions(+)
+ create mode 100644 arch/mips/boot/dts/ingenic/rzx27.dts
+
+diff --git a/arch/mips/boot/dts/ingenic/Makefile b/arch/mips/boot/dts/ingenic/Makefile
+index e2aa2f25783d..29c0502d63aa 100644
+--- a/arch/mips/boot/dts/ingenic/Makefile
++++ b/arch/mips/boot/dts/ingenic/Makefile
+@@ -6,5 +6,6 @@ dtb-$(CONFIG_JZ4770_GCW0)	+= gcw0.dtb
+ dtb-$(CONFIG_JZ4780_CI20)	+= ci20.dtb
+ dtb-$(CONFIG_X1000_CU1000_NEO)	+= cu1000-neo.dtb
+ dtb-$(CONFIG_X1830_CU1830_NEO)	+= cu1830-neo.dtb
++dtb-$(CONFIG_JZ4740_RZX27)	+= rzx27.dtb
+ 
+ obj-$(CONFIG_BUILTIN_DTB)	+= $(addsuffix .o, $(dtb-y))
+diff --git a/arch/mips/boot/dts/ingenic/rzx27.dts b/arch/mips/boot/dts/ingenic/rzx27.dts
+new file mode 100644
+index 000000000000..33b324cba5d2
+--- /dev/null
++++ b/arch/mips/boot/dts/ingenic/rzx27.dts
+@@ -0,0 +1,377 @@
++// SPDX-License-Identifier: GPL-2.0
++/dts-v1/;
++
++#include "jz4725b.dtsi"
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/iio/adc/ingenic,adc.h>
++#include <dt-bindings/input/linux-event-codes.h>
++
++//#define DEBUG
++
++/ {
++	compatible = "ritmix,rzx27", "ingenic,jz4725b";
++	model = "Ritmix RZX-27";
++
++	chosen {
++		stdout-path = "/serial@10030000:57600";
++		bootargs = "root=/dev/mmcblk0p1 rw rootwait init=/sbin/init clk_ignore_unused";
++	};
++
++	memory {
++		device_type = "memory";
++		reg = <0x0 0x2000000>;
++	};
++
++#ifndef DEBUG
++	reserved-memory {
++		#address-cells = <1>;
++		#size-cells = <1>;
++		ranges;
++
++		vmem: video-memory@1f00000 {
++			compatible = "shared-dma-pool";
++			reg = <0x1f00000 0x100000>;
++			reusable;
++		};
++	};
++
++	vcc: regulator {
++		compatible = "regulator-fixed";
++
++		regulator-name = "vcc";
++		regulaor-min-microvolt = <3300000>;
++		regulaor-max-microvolt = <3300000>;
++		regulator-always-on;
++	};
++
++	backlight: backlight {
++		compatible = "pwm-backlight";
++		pwms = <&pwm 5 40000 0>;
++
++		brightness-levels = <0 16 32 48 64 80 112 144 192 255>;
++		default-brightness-level = <5>;
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&pins_pwm5>;
++
++		power-supply = <&vcc>;
++	};
++
++	gpio_keys: keys@0 {
++		compatible = "gpio-keys";
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		key@0 {
++			label = "D-pad up";
++			linux,code = <KEY_UP>;
++			gpios = <&gpd 8 GPIO_ACTIVE_LOW>;
++		};
++
++		key@1 {
++			label = "D-pad down";
++			linux,code = <KEY_DOWN>;
++			gpios = <&gpd 9 GPIO_ACTIVE_LOW>;
++		};
++
++		key@2 {
++			label = "D-pad left";
++			linux,code = <KEY_LEFT>;
++			gpios = <&gpd 11 GPIO_ACTIVE_LOW>;
++		};
++
++		key@3 {
++			label = "D-pad right";
++			linux,code = <KEY_RIGHT>;
++			gpios = <&gpc 20 GPIO_ACTIVE_LOW>;
++		};
++
++		key@4 {
++			label = "Button A";
++			linux,code = <KEY_LEFTCTRL>;
++			gpios = <&gpd 10 GPIO_ACTIVE_LOW>;
++		};
++
++		key@5 {
++			label = "Button B";
++			linux,code = <KEY_LEFTALT>;
++			gpios = <&gpd 24 GPIO_ACTIVE_LOW>;
++		};
++
++		key@6 {
++			label = "Button X";
++			linux,code = <KEY_LEFTSHIFT>;
++			gpios = <&gpd 16 GPIO_ACTIVE_LOW>;
++		};
++
++		key@7 {
++			label = "Button Y";
++			linux,code = <KEY_SPACE>;
++			gpios = <&gpd 17 GPIO_ACTIVE_LOW>;
++		};
++
++		key@8 {
++			label = "Volume Up";
++			linux,code = <KEY_VOLUMEUP>;
++			gpios = <&gpd 14 GPIO_ACTIVE_LOW>;
++		};
++
++		key@9 {
++			label = "Start button";
++			linux,code = <KEY_ENTER>;
++			gpios = <&gpc 30 GPIO_ACTIVE_HIGH>;
++		};
++
++		key@10 {
++			label = "Select button";
++			linux,code = <KEY_ESC>;
++			gpios = <&gpd 15 GPIO_ACTIVE_LOW>;
++		};
++
++		key@11 {
++			label = "Volume Down";
++			linux,code = <KEY_VOLUMEDOWN>;
++			gpios = <&gpc 31 GPIO_ACTIVE_HIGH>;
++		};
++
++		key@12 {
++			label = "Left shoulder button";
++			linux,code = <KEY_TAB>;
++			gpios = <&gpc 10 GPIO_ACTIVE_LOW>;
++		};
++
++		key@13 {
++			label = "Right shoulder button";
++			linux,code = <KEY_BACKSPACE>;
++			gpios = <&gpc 11 GPIO_ACTIVE_LOW>;
++		};
++	};
++
++	amp: analog-amplifier {
++		compatible = "simple-audio-amplifier";
++		enable-gpios = <&gpd 23 GPIO_ACTIVE_HIGH>;
++
++		VCC-supply = <&vcc>;
++	};
++
++	sound {
++		compatible = "simple-audio-card";
++
++		simple-audio-card,name = "rs90-audio";
++		simple-audio-card,format = "i2s";
++
++		simple-audio-card,widgets =
++			"Speaker", "Speaker",
++			"Headphone", "Headphones";
++		simple-audio-card,routing =
++			"INL", "LHPOUT",
++			"INR", "RHPOUT",
++			"Headphones", "LHPOUT",
++			"Headphones", "RHPOUT",
++			"Speaker", "OUTL",
++			"Speaker", "OUTR";
++		simple-audio-card,pin-switches = "Speaker";
++
++		simple-audio-card,hp-det-gpio = <&gpd 13 GPIO_ACTIVE_LOW>;
++		simple-audio-card,aux-devs = <&amp>;
++
++		simple-audio-card,bitclock-master = <&dai_codec>;
++		simple-audio-card,frame-master = <&dai_codec>;
++
++		dai_cpu: simple-audio-card,cpu {
++			sound-dai = <&aic>;
++		};
++
++		dai_codec: simple-audio-card,codec {
++			sound-dai = <&codec>;
++		};
++	};
++
++	usb_phy: usb-phy {
++		compatible = "usb-nop-xceiv";
++		#phy-cells = <0>;
++
++		clocks = <&cgu JZ4725B_CLK_UDC_PHY>;
++		clock-names = "main_clk";
++		vcc-supply = <&vcc>;
++	};
++
++	panel {
++		compatible = "sharp,ls020b1dd01d";
++		backlight = <&backlight>;
++		power-supply = <&vcc>;
++
++		port {
++			panel_input: endpoint {
++				remote-endpoint = <&panel_output>;
++			};
++		};
++	};
++#endif
++	battery: battery {
++		compatible = "simple-battery";
++		voltage-min-design-microvolt = <3692000>;
++		voltage-max-design-microvolt = <3900000>;
++		charge-full-design-microamp-hours = <1020000>;
++	};
++
++	resistor: resistor {
++		compatible = "voltage-divider";
++		#io-channel-cells = <0>;
++
++		output-ohms = <1125>;
++		full-ohms = <3900>;
++
++		io-channels = <&adc INGENIC_ADC_BATTERY>;
++	};
++
++	pmu {
++		compatible = "ingenic,jz4725b-battery", "ingenic,jz4740-battery";
++		io-channels = <&resistor>;
++		io-channel-names = "battery";
++		monitored-battery = <&battery>;
++	};
++
++	cpu_opp_table: opp-table {
++		compatible = "operating-points-v2";
++
++		opp-216000000 { opp-hz = /bits/ 64 <216000000>; };
++		opp-300000000 { opp-hz = /bits/ 64 <300000000>; };
++		opp-336000000 { opp-hz = /bits/ 64 <336000000>; };
++		opp-360000000 { opp-hz = /bits/ 64 <360000000>; };
++#ifndef DEBUG
++		opp-378000000 { opp-hz = /bits/ 64 <378000000>; };
++		opp-396000000 { opp-hz = /bits/ 64 <396000000>; };
++		opp-420000000 { opp-hz = /bits/ 64 <420000000>; };
++		opp-438000000 { opp-hz = /bits/ 64 <438000000>; };
++		opp-456000000 { opp-hz = /bits/ 64 <456000000>; };
++#endif
++	};
++
++	slcd: slcd-controller@13050000 {
++		compatible = "ingenic,jz4725b-slcd";
++		reg = <0x13050000 0x1000>;
++
++		interrupt-parent = <&intc>;
++		interrupts = <31>;
++
++		clocks = <&cgu JZ4725B_CLK_IPU>, <&cgu JZ4725B_CLK_LCD>;
++		clock-names = "lcd", "lcd_pclk";
++	};
++};
++
++&slcd {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_slcd>;
++	backlight = <&backlight>;
++
++	cs-gpios = <&gpc 13 GPIO_ACTIVE_LOW>;
++
++	status = "okay";
++};
++
++&ext {
++	clock-frequency = <12000000>;
++};
++
++&rtc_dev {
++	system-power-controller;
++};
++#ifndef DEBUG
++&udc {
++	phys = <&usb_phy>;
++};
++#endif
++&pinctrl {
++	pins_mmc1: mmc1 {
++		function = "mmc1";
++		groups = "mmc1-1bit";
++	};
++
++	pins_pwm5: pwm5 {
++		function = "pwm5";
++		groups = "pwm5";
++		bias-disable;
++	};
++
++	pins_slcd: slcd {
++		function = "lcd";
++		groups = "lcd-8bit"/* , "lcd-16bit", "lcd-special" */;
++	};
++};
++
++&mmc0 {
++	status = "disabled";
++};
++
++&mmc1 {
++	bus-width = <1>;
++	max-frequency = <48000000>;
++
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_mmc1>;
++
++	cd-gpios = <&gpd 25 GPIO_ACTIVE_LOW>;
++};
++
++&uart {
++	/*
++	 * The pins for RX/TX are used for the right shoulder button and
++	 * backlight PWM.
++	 */
++	/*
++	status = "disabled";
++	*/
++	status = "okay";
++};
++
++&nemc {
++	status = "disabled";
++};
++
++&cgu {
++	/* Use 32kHz oscillator as the parent of the RTC clock */
++	assigned-clocks = <&cgu JZ4725B_CLK_RTC>;
++	assigned-clock-parents = <&cgu JZ4725B_CLK_OSC32K>;
++};
++
++&tcu {
++	/*
++	 * 750 kHz for the system timer and clocksource, and use RTC as the
++	 * parent for the watchdog clock.
++	 */
++	assigned-clocks = <&tcu TCU_CLK_TIMER0>, <&tcu TCU_CLK_TIMER1>, <&tcu TCU_CLK_WDT>;
++	assigned-clock-parents = <0>, <0>, <&cgu JZ4725B_CLK_RTC>;
++	assigned-clock-rates = <750000>, <750000>;
++};
++
++&lcd {
++#if 1
++	status = "disabled";
++#else
++	memory-region = <&vmem>;
++
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_lcd>;
++#endif
++};
++
++#ifndef DEBUG
++&lcd_ports {
++	port@0 {
++		reg = <0>;
++
++		panel_output: endpoint {
++			remote-endpoint = <&panel_input>;
++		};
++	};
++};
++
++&cpu0 {
++	operating-points-v2 = <&cpu_opp_table>;
++
++	/* We use the main PLL as the CPU clock for the cpufreq driver. */
++	clocks = <&cgu JZ4725B_CLK_PLL>;
++};
++#endif
+diff --git a/arch/mips/ingenic/Kconfig b/arch/mips/ingenic/Kconfig
+index 440e05f2915a..15213d0f6347 100644
+--- a/arch/mips/ingenic/Kconfig
++++ b/arch/mips/ingenic/Kconfig
+@@ -48,6 +48,10 @@ config X1830_CU1830_NEO
+ 	bool "YSH & ATIL CU1830 Module with Neo backplane"
+ 	select MACH_X1830
+ 
++config JZ4740_RZX27
++	bool "Ritmix RZX-27"
++	select MACH_JZ4725B
++
+ endchoice
+ 
+ config MACH_JZ4725B
+-- 
+2.13.6
+

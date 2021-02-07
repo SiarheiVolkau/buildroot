@@ -1,0 +1,25 @@
+From 11008850ce8e0a507fea727bf679817eba7663dc Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Sun, 7 Feb 2021 14:30:53 +0300
+Subject: [PATCH] fix cmake version error
+
+---
+ CMakeLists.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 96ec817..32d23e6 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -22,7 +22,7 @@ include_directories(${INI_INCLUDE_DIRS})
+ 
+ pkg_check_modules(ZLIB QUIET zlib)
+ if (ZLIB_FOUND)
+-	add_compile_definitions(USE_GZIP)
++	add_definitions(-DUSE_GZIP)
+ 	link_directories(${ZLIB_LIBRARY_DIRS})
+ 	include_directories(${ZLIB_INCLUDE_DIRS})
+ endif (ZLIB_FOUND)
+-- 
+2.13.6
+

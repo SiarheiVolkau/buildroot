@@ -1,0 +1,178 @@
+From 0b419332d39630a05787621cd0ff07c1a6b61bfa Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Sat, 6 Feb 2021 20:41:08 +0300
+Subject: [PATCH 2/3] try boot from both SD/MMC slots on RZX-27
+
+---
+ Makefile           |  4 ++++
+ config-rzx27.mk    |  1 +
+ src/config-rzx27.h |  4 ++--
+ src/main.c         | 37 ++++++++++++++++++++++++++-----------
+ src/mmc.c          | 35 ++++++++++++++++++++++++++---------
+ 5 files changed, 59 insertions(+), 22 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index dbc35ee..c5ae7e2 100644
+--- a/Makefile
++++ b/Makefile
+@@ -64,6 +64,10 @@ else
+ endif
+ endif
+ 
++ifdef TRY_BOTH_MMCS
++	CPPFLAGS += -DTRY_BOTH_MMCS
++endif
++
+ ifdef USE_UBI
+ 	CPPFLAGS += -DUSE_UBI
+ 	OBJS += ubi.o
+diff --git a/config-rzx27.mk b/config-rzx27.mk
+index 217038a..a8f9f22 100644
+--- a/config-rzx27.mk
++++ b/config-rzx27.mk
+@@ -6,6 +6,7 @@
+ GC_FUNCTIONS = True
+ USE_SERIAL = True
+ BKLIGHT_ON = True
++TRY_BOTH_MMCS = True
+ # USE_NAND = True
+ # USE_UBI = True
+ # STAGE1_ONLY = True
+diff --git a/src/config-rzx27.h b/src/config-rzx27.h
+index c4d2f22..6759f08 100644
+--- a/src/config-rzx27.h
++++ b/src/config-rzx27.h
+@@ -14,7 +14,7 @@
+ #define LOG_BAUDRATE    57600
+ 
+ /* MMC parameters */
+-#define MMC_ID          1
+-#define MMC_1BIT        1
++#define MMC0_4BIT       1
++#define MMC1_4BIT       0
+ #define PAGE_SIZE       512 /* 512, 2048 or 4096 */
+ #define PAGE_PER_BLOCK  1
+diff --git a/src/main.c b/src/main.c
+index 7136817..04b13e8 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -213,20 +213,35 @@ void c_main(void)
+ 	 * miss and therefore cause no evictions.
+ 	 */
+ 
+-	mmc_inited = !mmc_init(MMC_ID);
+-	if (mmc_inited) {
+-		if (mmc_load_kernel(
+-				MMC_ID, (void *) (KSEG1 + LD_ADDR), alt_kernel,
+-				&exec_addr) == 1)
+-			set_alt_param();
+-
+-		if (exec_addr) {
++#ifdef TRY_BOTH_MMCS
++	for (int mmc = 1; mmc >= 0; mmc--) {
++		SERIAL_PUTS_ARGI("Trying to boot from SD", mmc, ".\n");
++#else
++	{
++		uint8_t mmc = MMC_ID;
++#endif
++		mmc_inited = !mmc_init(mmc);
++		if (mmc_inited) {
++			if (mmc_load_kernel(
++					mmc, (void *) (KSEG1 + LD_ADDR), alt_kernel,
++					&exec_addr) == 1)
++				set_alt_param();
++
++			if (exec_addr) {
+ #if PASS_ROOTFS_PARAMS
+-			kernel_params[PARAM_ROOTDEV] =
+-					"root=/dev/mmcblk0p1";
+-			kernel_params[PARAM_ROOTTYPE] = "rootfstype=vfat";
++				kernel_params[PARAM_ROOTDEV] =
++						"root=/dev/mmcblk0p1";
++				kernel_params[PARAM_ROOTTYPE] = "rootfstype=vfat";
+ #endif
++			}
+ 		}
++#ifdef TRY_BOTH_MMCS
++		if (!mmc_inited || !exec_addr) {
++			SERIAL_PUTS_ARGI("Unable to boot from SD", mmc, ".\n");
++		} else {
++			break;
++		}
++#endif
+ 	}
+ 
+ 	if (!mmc_inited || !exec_addr) {
+diff --git a/src/mmc.c b/src/mmc.c
+index f25a34a..fae61db 100644
+--- a/src/mmc.c
++++ b/src/mmc.c
+@@ -35,14 +35,31 @@
+ #define ACMD_SET_BUS_WIDTH	6
+ #define ACMD_SD_SEND_OP_COND	41
+ 
+-#ifndef MMC_1BIT
+-#define CMDAT_4BIT		BIT(10)
+-#define MMC_BUS_WIDTH		0x2
++#if defined(MMC0_4BIT) && (MMC0_4BIT == 1)
++#define CMDAT_4BIT_MMC0		BIT(10)
++#define MMC0_BUS_WIDTH		0x02
++#elif defined(MMC_ID) && (MMC_ID == 0) && (!defined(MMC_1BIT) || MMC_1BIT == 0)
++#define CMDAT_4BIT_MMC0		BIT(10)
++#define MMC0_BUS_WIDTH		0x02
+ #else
+-#define CMDAT_4BIT		0
+-#define MMC_BUS_WIDTH		0x0
++#define CMDAT_4BIT_MMC0		0
++#define MMC0_BUS_WIDTH		0x00
+ #endif
+ 
++#if defined(MMC1_4BIT) && (MMC1_4BIT == 1)
++#define CMDAT_4BIT_MMC1		BIT(10)
++#define MMC1_BUS_WIDTH		0x02
++#elif defined(MMC_ID) && (MMC_ID == 1) && (!defined(MMC_1BIT) || MMC_1BIT == 0)
++#define CMDAT_4BIT_MMC1		BIT(10)
++#define MMC1_BUS_WIDTH		0x02
++#else
++#define CMDAT_4BIT_MMC1		0
++#define MMC1_BUS_WIDTH		0x00
++#endif
++
++#define CMDAT_4BIT(mmcid)	((mmcid) ? CMDAT_4BIT_MMC1 : CMDAT_4BIT_MMC0)
++#define MMC_BUS_WIDTH(mmcid)	((mmcid) ? MMC1_BUS_WIDTH : MMC0_BUS_WIDTH)
++
+ enum response {
+ 	MSC_NO_RESPONSE,
+ 	MSC_RESPONSE_R1,
+@@ -106,16 +123,16 @@ void mmc_start_block(unsigned int id, uint32_t src, uint32_t num_blocks)
+ {
+ 	uint16_t resp[MSC_RESPONSE_MAX];
+ 
+-	mmc_cmd(id, CMD_SET_BLOCKLEN, MMC_SECTOR_SIZE, CMDAT_4BIT, MSC_RESPONSE_R1, resp);
++	mmc_cmd(id, CMD_SET_BLOCKLEN, MMC_SECTOR_SIZE, CMDAT_4BIT(id), MSC_RESPONSE_R1, resp);
+ 
+ 	jz_mmc_stop_clock(id);
+ 	__msc_set_nob(id, num_blocks);
+ 	__msc_set_blklen(id, MMC_SECTOR_SIZE);
+ 
+ 	if (is_sdhc) 
+-		mmc_cmd(id, CMD_READ_MULTIPLE, src, CMDAT_4BIT | CMDAT_DATA_EN, MSC_RESPONSE_R1, resp);
++		mmc_cmd(id, CMD_READ_MULTIPLE, src, CMDAT_4BIT(id) | CMDAT_DATA_EN, MSC_RESPONSE_R1, resp);
+ 	else
+-		mmc_cmd(id, CMD_READ_MULTIPLE, src * MMC_SECTOR_SIZE, CMDAT_4BIT | CMDAT_DATA_EN, MSC_RESPONSE_R1, resp);
++		mmc_cmd(id, CMD_READ_MULTIPLE, src * MMC_SECTOR_SIZE, CMDAT_4BIT(id) | CMDAT_DATA_EN, MSC_RESPONSE_R1, resp);
+ }
+ 
+ void mmc_stop_block(unsigned int id)
+@@ -246,7 +263,7 @@ int mmc_init(unsigned int id)
+ 
+ 	/* Switch to 4-bit mode */
+ 	mmc_cmd(id, CMD_APP_CMD, rca, 0x0, MSC_RESPONSE_R1, resp);
+-	mmc_cmd(id, ACMD_SET_BUS_WIDTH, MMC_BUS_WIDTH, CMDAT_4BIT, MSC_RESPONSE_R1, resp);
++	mmc_cmd(id, ACMD_SET_BUS_WIDTH, MMC_BUS_WIDTH(id), CMDAT_4BIT(id), MSC_RESPONSE_R1, resp);
+ 
+ 	return 0;
+ }
+-- 
+2.13.6
+
