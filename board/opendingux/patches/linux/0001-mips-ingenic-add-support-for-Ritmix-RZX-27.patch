@@ -1,7 +1,7 @@
 From f898235794fdc69483efc47356f1ba2e80dc406b Mon Sep 17 00:00:00 2001
 From: Sergey Volkov <Sergey.Volkov@promwad.com>
 Date: Sun, 7 Feb 2021 14:12:28 +0300
-Subject: [PATCH] mips: ingenic: add support for Ritmix RZX-27
+Subject: [PATCH 1/2] mips: ingenic: add support for Ritmix RZX-27
 
 ---
  arch/mips/boot/dts/ingenic/Makefile  |   1 +
