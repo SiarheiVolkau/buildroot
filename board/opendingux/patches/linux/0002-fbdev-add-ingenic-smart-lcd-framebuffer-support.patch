@@ -1,15 +1,15 @@
-From ada7f9141a14fd2bc4fc1b3cc64ea932b06eba5d Mon Sep 17 00:00:00 2001
+From 1235e42022d23a83c88e4c7a4356b80e7ed04e31 Mon Sep 17 00:00:00 2001
 From: Sergey Volkov <Sergey.Volkov@promwad.com>
 Date: Sun, 7 Feb 2021 17:01:50 +0300
 Subject: [PATCH 2/2] fbdev: add ingenic smart lcd framebuffer support
 
 ---
- drivers/video/fbdev/Kconfig          |   10 +
- drivers/video/fbdev/Makefile         |    1 +
- drivers/video/fbdev/jz4740_lcd.h     |  120 ++++
- drivers/video/fbdev/jz4740_slcd.h    |  178 ++++++
- drivers/video/fbdev/jz4740_slcd_fb.c | 1113 ++++++++++++++++++++++++++++++++++
- 5 files changed, 1422 insertions(+)
+ drivers/video/fbdev/Kconfig          |  10 +
+ drivers/video/fbdev/Makefile         |   1 +
+ drivers/video/fbdev/jz4740_lcd.h     | 120 +++++
+ drivers/video/fbdev/jz4740_slcd.h    | 178 +++++++
+ drivers/video/fbdev/jz4740_slcd_fb.c | 923 +++++++++++++++++++++++++++++++++++
+ 5 files changed, 1232 insertions(+)
  create mode 100644 drivers/video/fbdev/jz4740_lcd.h
  create mode 100644 drivers/video/fbdev/jz4740_slcd.h
  create mode 100644 drivers/video/fbdev/jz4740_slcd_fb.c
@@ -359,14 +359,15 @@ index 000000000000..17500e8d045e
 +#endif  /*__JZ4740_SLCD_H__*/
 diff --git a/drivers/video/fbdev/jz4740_slcd_fb.c b/drivers/video/fbdev/jz4740_slcd_fb.c
 new file mode 100644
-index 000000000000..7e50c85cbae0
+index 000000000000..619c38320ddb
 --- /dev/null
 +++ b/drivers/video/fbdev/jz4740_slcd_fb.c
-@@ -0,0 +1,1113 @@
+@@ -0,0 +1,923 @@
 +/*
 + *  Copyright (C) 2009-2010, Lars-Peter Clausen <lars@metafoo.de>
 + *  Copyright (C) 2010, Maarten ter Huurne <maarten@treewalker.org>
-+ *		JZ4720/JZ4740 SoC LCD framebuffer driver
++ *  Copyright (C) 2021, Siarhei Volkau <lis8215@gmail.com>
++ *		JZ47XX SoC Smart LCD framebuffer driver
 + *
 + *  This program is free software; you can redistribute	 it and/or modify it
 + *  under  the terms of	 the GNU General  Public License as published by the
@@ -383,24 +384,15 @@ index 000000000000..7e50c85cbae0
 +#include <linux/module.h>
 +#include <linux/mutex.h>
 +#include <linux/platform_device.h>
-+
 +#include <linux/clk.h>
 +#include <linux/interrupt.h>
 +#include <linux/delay.h>
-+
 +#include <linux/console.h>
 +#include <linux/fb.h>
-+
 +#include <linux/dma-mapping.h>
-+
-+//#include <asm/mach-jz4740/dma.h>
-+//#include <asm/mach-jz4740/gpio.h>
-+//#include <asm/mach-jz4740/jz4740_fb.h>
 +
 +#include "jz4740_lcd.h"
 +#include "jz4740_slcd.h"
-+
-+#define DMA_MODE
 +
 +static struct fb_fix_screeninfo jzfb_fix = {
 +	.id =		"JZ4740 SLCD FB",
@@ -521,55 +513,12 @@ index 000000000000..7e50c85cbae0
 +	return 0;
 +}
 +
-+#ifdef DMA_MODE
-+static void jzfb_disable_dma(struct jzfb *jzfb)
++static void jzfb_stop_controller(struct jzfb *jzfb)
 +{
-+#if 0
-+	jz4740_dma_disable(jzfb->dma);
-+	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
-+	writeb(readb(jzfb->base + JZ_REG_SLCD_CTRL) & ~SLCD_CTRL_DMA_EN,
-+		jzfb->base + JZ_REG_SLCD_CTRL);
-+#else
-+	// stop controller
-+	{
-+		u32 ctrl = readl(jzfb->base + JZ_REG_LCD_CTRL);
-+		ctrl &= ~JZ_LCD_CTRL_ENABLE;
-+		ctrl |= JZ_LCD_CTRL_DISABLE;
-+		writel(ctrl, jzfb->base + JZ_REG_LCD_CTRL);
-+		//while ((readl(jzfb->base + JZ_REG_LCD_STATE) & BIT(7)) == 0);
-+	}
-+#endif
-+}
-+
-+#if 0
-+static struct jz4740_dma_config jzfb_slcd_dma_config = {
-+	.src_width = JZ4740_DMA_WIDTH_32BIT,
-+	.dst_width = JZ4740_DMA_WIDTH_16BIT,
-+	.transfer_size = JZ4740_DMA_TRANSFER_SIZE_16BYTE,
-+	.request_type = JZ4740_DMA_TYPE_SLCD,
-+	.flags = JZ4740_DMA_SRC_AUTOINC,
-+	.mode = JZ4740_DMA_MODE_BLOCK,
-+};
-+#endif
-+
-+static void print_registers(struct jzfb *jzfb)
-+{
-+	pr_info("LCD_STATE = %x\n", readl(jzfb->base + JZ_REG_LCD_STATE));
-+	pr_info("LCD_CFG   = %x\n", readl(jzfb->base + JZ_REG_LCD_CFG));
-+	pr_info("LCD_CTL   = %x\n", readl(jzfb->base + JZ_REG_LCD_CTRL));
-+	pr_info("LCD_OSDCFG= %x\n", readl(jzfb->base + JZ_REG_LCD_OSD_CFG));
-+	pr_info("LCD_OSDCTL= %x\n", readl(jzfb->base + JZ_REG_LCD_OSD_CTRL));
-+	pr_info("LCD_OSDSTS= %x\n", readl(jzfb->base + JZ_REG_LCD_OSD_STATE));
-+	pr_info("LCD_DA0   = %x\n", readl(jzfb->base + JZ_REG_LCD_DA0));
-+	pr_info("LCD_SA0   = %x\n", readl(jzfb->base + JZ_REG_LCD_SA0));
-+	pr_info("LCD_FID0  = %x\n", readl(jzfb->base + JZ_REG_LCD_FID0));
-+	pr_info("LCD_CMD0  = %x\n", readl(jzfb->base + JZ_REG_LCD_CMD0));
-+	pr_info("LCD_DA1   = %x\n", readl(jzfb->base + JZ_REG_LCD_DA1));
-+	pr_info("LCD_SA1   = %x\n", readl(jzfb->base + JZ_REG_LCD_SA1));
-+	pr_info("LCD_FID1  = %x\n", readl(jzfb->base + JZ_REG_LCD_FID1));
-+	pr_info("LCD_CMD1  = %x\n", readl(jzfb->base + JZ_REG_LCD_CMD1));
-+	pr_info("LCD_DESZ0 = %x\n", readl(jzfb->base + JZ_REG_LCD_DESZ0));
-+	pr_info("LCD_DESZ1 = %x\n", readl(jzfb->base + JZ_REG_LCD_DESZ1));
++	u32 ctrl = readl(jzfb->base + JZ_REG_LCD_CTRL);
++	ctrl &= ~JZ_LCD_CTRL_ENABLE;
++	ctrl |= JZ_LCD_CTRL_DISABLE;
++	writel(ctrl, jzfb->base + JZ_REG_LCD_CTRL);
 +}
 +
 +static void jzfb_upload_frame_dma(struct jzfb *jzfb)
@@ -584,17 +533,6 @@ index 000000000000..7e50c85cbae0
 +	dma_cache_sync(fb->device, jzfb->vidmem + offset, size,
 +		       DMA_TO_DEVICE);
 +
-+#if 0
-+	jz4740_dma_set_src_addr(jzfb->dma, jzfb->vidmem_phys + offset);
-+	jz4740_dma_set_dst_addr(jzfb->dma,
-+				CPHYSADDR(jzfb->base + JZ_REG_SLCD_FIFO));
-+	jz4740_dma_set_transfer_count(jzfb->dma, size);
-+
-+	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
-+	writeb(readb(jzfb->base + JZ_REG_SLCD_CTRL) | SLCD_CTRL_DMA_EN,
-+		jzfb->base + JZ_REG_SLCD_CTRL);
-+	jz4740_dma_enable(jzfb->dma);
-+#else
 +	gpiod_set_value(jzfb->cs, GPIOD_OUT_HIGH);
 +
 +	// set the write address to GRAM
@@ -615,48 +553,18 @@ index 000000000000..7e50c85cbae0
 +	ctrl |= JZ_LCD_CTRL_ENABLE;
 +	ctrl &= ~JZ_LCD_CTRL_DISABLE;
 +	writel(ctrl, jzfb->base + JZ_REG_LCD_CTRL);
-+
-+# if 0
-+	while (readb(jzfb->base + JZ_REG_SLCD_STATE) == 0);
-+	{
-+		u32 counter = 0;
-+		while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY)
-+			counter++;
-+		pr_info("frame tick\n");
-+		pr_info("waited %d loops\n", counter);
-+	}
-+	print_registers(jzfb);
-+#endif
-+#endif
 +}
-+#else // DMA_MODE
++#if 0 // CPU_MODE
 +static void jzfb_upload_frame_cpu(struct jzfb *jzfb)
 +{
 +	const int num_pixels = jzfb->fb->mode->xres * jzfb->fb->mode->yres;
 +	uint16_t *p = jzfb->vidmem;
 +	int i;
 +
-+	//jzfb_disable_dma(jzfb);
 +	gpiod_set_value(jzfb->cs, GPIOD_OUT_HIGH);
 +	for (i = 0; i < num_pixels; i++) {
 +		uint16_t rgb = *p++;
-+//		int lock_out = 10000;
-+		while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY) {
-+#if 0
-+			lock_out --;
-+			if (lock_out < 0) {
-+				pr_info("%s wait for SLCD BUSY end failed\n", __func__);
-+				pr_info("register CFG   = %08x\n", readl(jzfb->base + JZ_REG_LCD_CFG));
-+				pr_info("register CTL   = %08x\n", readl(jzfb->base + JZ_REG_LCD_CTRL));
-+				pr_info("register STAT  = %08x\n", readb(jzfb->base + JZ_REG_LCD_STATE));
-+				pr_info("register SCFG  = %08x\n", readw(jzfb->base + JZ_REG_SLCD_CFG));
-+				pr_info("register SCTL  = %08x\n", readb(jzfb->base + JZ_REG_SLCD_CTRL));
-+				pr_info("register SSTAT = %08x\n", readb(jzfb->base + JZ_REG_SLCD_STATE));
-+				pr_info("register CLKGR = %08x\n", readl(0xB0000020));
-+				return;
-+			}
-+#endif
-+		}
++		while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
 +		writel(SLCD_DATA_RS_DATA | rgb, jzfb->base + JZ_REG_SLCD_DATA);
 +	}
 +	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
@@ -670,7 +578,6 @@ index 000000000000..7e50c85cbae0
 +
 +	mutex_lock(&jzfb->lock);
 +	if (jzfb->is_enabled) {
-+#ifdef DMA_MODE
 +		int interval;
 +
 +		if (jzfb->dma_completion.done) {
@@ -680,30 +587,19 @@ index 000000000000..7e50c85cbae0
 +				interval = HZ / 60;
 +			jzfb->refresh_on_pan = 0;
 +
-+			init_completion(&jzfb->dma_completion);
++			//init_completion(&jzfb->dma_completion);
 +			jzfb_upload_frame_dma(jzfb);
 +		} else
 +			interval = 1;
 +
 +		schedule_delayed_work(&jzfb->refresh_work, interval);
-+#else
++#if 0 // CPU_MODE
 +		jzfb_upload_frame_cpu(jzfb);
 +		schedule_delayed_work(&jzfb->refresh_work, HZ / 10);
 +#endif
 +	}
 +	mutex_unlock(&jzfb->lock);
 +}
-+
-+#if 0
-+#ifdef DMA_MODE
-+static void jzfb_refresh_work_complete(
-+		struct jz4740_dma_chan *dma, int res, void *dev)
-+{
-+	struct jzfb *jzfb = dev_get_drvdata(dev);
-+	complete_all(&jzfb->dma_completion);
-+}
-+#endif
-+#endif
 +
 +static int jzfb_set_par(struct fb_info *info)
 +{
@@ -871,17 +767,15 @@ index 000000000000..7e50c85cbae0
 +
 +	clk_enable(jzfb->ldclk);
 +
-+#if 0
++#if 0 // looks dangerous
 +	writel(0, jzfb->base + JZ_REG_LCD_STATE);
-+#ifdef DMA_MODE
-+	jzfb_disable_dma(jzfb);
++	jzfb_stop_controller(jzfb);
 +	complete_all(&jzfb->dma_completion);
 +
 +	ctrl = readl(jzfb->base + JZ_REG_LCD_CTRL);
 +	ctrl |= JZ_LCD_CTRL_ENABLE;
 +	ctrl &= ~JZ_LCD_CTRL_DISABLE;
 +	writel(ctrl, jzfb->base + JZ_REG_LCD_CTRL);
-+#endif
 +#endif
 +
 +	schedule_delayed_work(&jzfb->refresh_work, 0);
@@ -892,16 +786,11 @@ index 000000000000..7e50c85cbae0
 +	/* It is safe but wasteful to call refresh_work() while disabled. */
 +	cancel_delayed_work_sync(&jzfb->refresh_work);
 +
-+#ifdef DMA_MODE
-+	/* Abort any DMA transfer that might be in progress and allow direct
++	/* Abort any transfer that might be in progress and allow direct
 +	   writes to the panel. */
-+	jzfb_disable_dma(jzfb);
++	//jzfb_stop_controller(jzfb);
 +
-+#if 0
-+	jzfb->panel->disable(jzfb);
-+#endif
 +	complete_all(&jzfb->dma_completion);
-+#endif
 +
 +	clk_disable(jzfb->ldclk);
 +}
@@ -911,8 +800,6 @@ index 000000000000..7e50c85cbae0
 +	struct jzfb *jzfb = info->par;
 +	int ret = 0;
 +	int new_enabled = (blank_mode == FB_BLANK_UNBLANK);
-+
-+	pr_info("%s %d", __func__, new_enabled);
 +
 +	mutex_lock(&jzfb->lock);
 +	if (new_enabled) {
@@ -930,14 +817,12 @@ index 000000000000..7e50c85cbae0
 +	return ret;
 +}
 +
-+#ifdef DMA_MODE
 +static int jzfb_wait_for_vsync(struct fb_info *info)
 +{
 +	struct jzfb *jzfb = info->par;
 +
 +	return wait_for_completion_interruptible(&jzfb->dma_completion);
 +}
-+#endif
 +
 +static int jzfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 +{
@@ -954,9 +839,7 @@ index 000000000000..7e50c85cbae0
 +	(*jzfb->framedesc)[0].addr = jzfb->vidmem_phys
 +	                      + info->fix.line_length * var->yoffset;
 +
-+#ifdef DMA_MODE
 +	jzfb_wait_for_vsync(info);
-+#endif
 +
 +	jzfb->refresh_on_pan = 1;
 +	flush_delayed_work(&jzfb->refresh_work);
@@ -1027,21 +910,6 @@ index 000000000000..7e50c85cbae0
 +		SetPageReserved(virt_to_page(page));
 +	}
 +
-+#if 0
-+	for (i = 0; i < 3; i++)
-+		(*jzfb->framedesc)[i].next = jzfb->framedesc_phys
-+				+ ((i + 1) % 3) * sizeof(struct jzfb_framedesc);
-+	(*jzfb->framedesc)[0].addr = (*jzfb->framedesc)[2].addr =
-+			jzfb->blackline_phys;
-+	(*jzfb->framedesc)[0].id = 0xdadabeeb;
-+	(*jzfb->framedesc)[2].id = 0xfadefeed;
-+	(*jzfb->framedesc)[0].cmd = jzfb->blackline_size / 4;
-+	(*jzfb->framedesc)[2].cmd = jzfb->blackline_size / 4;
-+	(*jzfb->framedesc)[1].addr = jzfb->vidmem_phys;
-+	(*jzfb->framedesc)[1].id = 0xdeafbead;
-+	(*jzfb->framedesc)[1].cmd = (max_framesize / 4)
-+			| JZ_LCD_CMD_EOF_IRQ | JZ_LCD_CMD_SOF_IRQ;
-+#else
 +	(*jzfb->framedesc)[0].addr = jzfb->vidmem_phys;
 +	(*jzfb->framedesc)[0].next = jzfb->framedesc_phys; // + sizeof(struct jzfb_framedesc);
 +	(*jzfb->framedesc)[0].id = 0x01;
@@ -1054,7 +922,7 @@ index 000000000000..7e50c85cbae0
 +	(*jzfb->framedesc)[1].id = 0x02;
 +	(*jzfb->framedesc)[1].cmd = (max_framesize / 4)
 +			| JZ_LCD_CMD_EOF_IRQ | JZ_LCD_CMD_SOF_IRQ;
-+#endif
++
 +	return 0;
 +
 +err_free_blackline:
@@ -1095,12 +963,9 @@ index 000000000000..7e50c85cbae0
 +	unsigned long state = readl(jzfb->base + JZ_REG_LCD_STATE);
 +
 +	if (state & JZ_LCD_STATE_SOF) {
-+#ifdef DMA_MODE
-+		init_completion(&jzfb->dma_completion);
-+#endif
++		//init_completion(&jzfb->dma_completion);
 +		state &= ~JZ_LCD_STATE_SOF;
 +	} else {
-+#ifdef DMA_MODE
 +		complete_all(&jzfb->dma_completion);
 +		{
 +			u32 ctrl = readl(jzfb->base + JZ_REG_LCD_CTRL);
@@ -1110,7 +975,6 @@ index 000000000000..7e50c85cbae0
 +		}
 +		writel(jzfb->framedesc_phys, jzfb->base + JZ_REG_LCD_DA0);
 +		gpiod_set_value(jzfb->cs, GPIOD_OUT_LOW);
-+#endif
 +		state &= ~JZ_LCD_STATE_EOF;
 +	}
 +
@@ -1195,40 +1059,27 @@ index 000000000000..7e50c85cbae0
 +	jzfb->mem = mem;
 +
 +	jzfb->refresh_on_pan = 0;
-+#ifdef DMA_MODE
 +	init_completion(&jzfb->dma_completion);
 +	complete_all(&jzfb->dma_completion);
-+#endif
-+	jzfb->cs = gpiod_get_index(&pdev->dev, "cs", 0, GPIOD_OUT_LOW);
++
++	jzfb->cs = devm_gpiod_get_index(&pdev->dev, "cs", 0, GPIOD_OUT_LOW);
 +	if (!jzfb->cs) {
 +		dev_err(&pdev->dev, "Failed to request CS GPIO\n");
-+	}
-+
-+#if 0
-+#ifdef DMA_MODE
-+	jzfb->dma = jz4740_dma_request(&pdev->dev, dev_name(&pdev->dev), 0);
-+	if (!jzfb->dma) {
-+		dev_err(&pdev->dev, "Failed to get DMA channel\n");
-+		ret = -EBUSY;
 +		goto err_framebuffer_release;
 +	}
-+	//jz4740_dma_configure(jzfb->dma, &jzfb_slcd_dma_config);
-+	//jz4740_dma_set_complete_cb(jzfb->dma, &jzfb_refresh_work_complete);
-+#endif
-+#endif
 +
 +	jzfb->ldclk = devm_clk_get(&pdev->dev, "lcd");
 +	if (IS_ERR(jzfb->ldclk)) {
 +		ret = PTR_ERR(jzfb->ldclk);
 +		dev_err(&pdev->dev, "Failed to get lcd clock: %d\n", ret);
-+		goto err_free_dma;
++		goto err_framebuffer_release;
 +	}
 +
 +	jzfb->lpclk = devm_clk_get(&pdev->dev, "lcd_pclk");
 +	if (IS_ERR(jzfb->lpclk)) {
 +		ret = PTR_ERR(jzfb->lpclk);
 +		dev_err(&pdev->dev, "Failed to get lcd pixel clock: %d\n", ret);
-+		goto err_put_ldclk;
++		goto err_framebuffer_release;
 +	}
 +
 +	jzfb->base = ioremap(mem->start, resource_size(mem));
@@ -1236,7 +1087,7 @@ index 000000000000..7e50c85cbae0
 +	if (!jzfb->base) {
 +		dev_err(&pdev->dev, "Failed to ioremap register memory region\n");
 +		ret = -EBUSY;
-+		goto err_put_lpclk;
++		goto err_framebuffer_release;
 +	}
 +
 +	platform_set_drvdata(pdev, jzfb);
@@ -1260,7 +1111,7 @@ index 000000000000..7e50c85cbae0
 +	fb->fix.mmio_start = mem->start;
 +	fb->fix.mmio_len = resource_size(mem);
 +	fb->fix.smem_start = jzfb->vidmem_phys;
-+	fb->fix.smem_len =  fb->fix.line_length * fb->var.yres_virtual;
++	fb->fix.smem_len =  jzfb->vidmem_size;
 +	fb->screen_base = jzfb->vidmem;
 +	fb->pseudo_palette = jzfb->pseudo_palette;
 +
@@ -1291,9 +1142,7 @@ index 000000000000..7e50c85cbae0
 +		goto err_free_devmem;
 +	}
 +
-+#ifdef DMA_MODE
-+	jzfb_disable_dma(jzfb);
-+#endif
++	jzfb_stop_controller(jzfb);
 +
 +	fb->bl_dev = devm_of_find_backlight(&pdev->dev);
 +
@@ -1311,7 +1160,7 @@ index 000000000000..7e50c85cbae0
 +	if (ret) {
 +		dev_err(&pdev->dev, "Failed to register framebuffer: %d\n", ret);
 +		return ret;
-+		goto err_free_panel;
++		goto err_free_irq;
 +	}
 +
 +	jzfb->fb = fb;
@@ -1320,47 +1169,15 @@ index 000000000000..7e50c85cbae0
 +	jzfb->is_enabled = 1;
 +
 +	schedule_delayed_work(&jzfb->refresh_work, 0);
-+#if 0
-+	ret = device_create_file(&pdev->dev, &dev_attr_panel);
-+	if (ret)
-+		goto err_cancel_work;
-+
-+	ret = device_create_file(&pdev->dev, &dev_attr_tv_out);
-+	if (ret)
-+		goto err_remove_file_panel;
-+
-+	ret = device_create_file(&pdev->dev, &dev_attr_tv_out_vsync);
-+	if (!ret)
-+		return 0;
-+
-+	device_remove_file(&pdev->dev, &dev_attr_tv_out);
-+err_remove_file_panel:
-+	device_remove_file(&pdev->dev, &dev_attr_panel);
-+err_cancel_work:
-+	cancel_delayed_work_sync(&jzfb->refresh_work);
-+err_free_panel:
-+	jzfb->panel->exit(jzfb);
-+#else
 +	return 0;
-+err_free_panel:
-+#endif
++
 +err_free_irq:
 +	free_irq(irq, jzfb);
 +err_free_devmem:
-+	//jzfb_free_gpio_pins(jzfb);
-+
 +	fb_dealloc_cmap(&fb->cmap);
 +	jzfb_free_devmem(jzfb);
 +err_iounmap:
 +	iounmap(jzfb->base);
-+err_put_lpclk:
-+	clk_put(jzfb->lpclk);
-+err_put_ldclk:
-+	clk_put(jzfb->ldclk);
-+err_free_dma:
-+#ifdef DMA_MODE
-+	//jz4740_dma_free(jzfb->dma);
-+#endif
 +err_framebuffer_release:
 +	framebuffer_release(fb);
 +err_release_mem_region:
@@ -1372,9 +1189,6 @@ index 000000000000..7e50c85cbae0
 +{
 +	struct jzfb *jzfb = platform_get_drvdata(pdev);
 +
-+	//device_remove_file(&pdev->dev, &dev_attr_tv_out_vsync);
-+	//device_remove_file(&pdev->dev, &dev_attr_tv_out);
-+	//device_remove_file(&pdev->dev, &dev_attr_panel);
 +	jzfb_blank(FB_BLANK_POWERDOWN, jzfb->fb);
 +
 +	// FIXME free_irq(JZ4740_IRQ_LCD, jzfb);
@@ -1382,10 +1196,6 @@ index 000000000000..7e50c85cbae0
 +	/* Blanking will prevent future refreshes from behind scheduled.
 +	   Now wait for a possible refresh in progress to finish. */
 +	cancel_delayed_work_sync(&jzfb->refresh_work);
-+
-+	//jzfb->panel->exit(jzfb);
-+
-+	//jz4740_dma_free(jzfb->dma);
 +
 +	iounmap(jzfb->base);
 +	release_mem_region(jzfb->mem->start, resource_size(jzfb->mem));
@@ -1473,7 +1283,7 @@ index 000000000000..7e50c85cbae0
 +module_exit(jzfb_exit);
 +
 +MODULE_LICENSE("GPL");
-+MODULE_AUTHOR("Lars-Peter Clausen <lars@metafoo.de>, Maarten ter Huurne <maarten@treewalker.org>");
++MODULE_AUTHOR("Lars-Peter Clausen <lars@metafoo.de>, Maarten ter Huurne <maarten@treewalker.org>, Siarhei Volkau <lis8215@gmail.com>");
 +MODULE_DESCRIPTION("JZ4740 SoC SLCD framebuffer driver");
 +MODULE_ALIAS("platform:jz4740-fb");
 -- 
