@@ -1,15 +1,15 @@
-From 1235e42022d23a83c88e4c7a4356b80e7ed04e31 Mon Sep 17 00:00:00 2001
+From 175ad4ce1d8a0b8b09080c6c252b22b0418dc2f8 Mon Sep 17 00:00:00 2001
 From: Sergey Volkov <Sergey.Volkov@promwad.com>
 Date: Sun, 7 Feb 2021 17:01:50 +0300
-Subject: [PATCH 2/2] fbdev: add ingenic smart lcd framebuffer support
+Subject: [PATCH 2/3] fbdev: add ingenic smart lcd framebuffer support
 
 ---
  drivers/video/fbdev/Kconfig          |  10 +
  drivers/video/fbdev/Makefile         |   1 +
  drivers/video/fbdev/jz4740_lcd.h     | 120 +++++
  drivers/video/fbdev/jz4740_slcd.h    | 178 +++++++
- drivers/video/fbdev/jz4740_slcd_fb.c | 923 +++++++++++++++++++++++++++++++++++
- 5 files changed, 1232 insertions(+)
+ drivers/video/fbdev/jz4740_slcd_fb.c | 945 +++++++++++++++++++++++++++++++++++
+ 5 files changed, 1254 insertions(+)
  create mode 100644 drivers/video/fbdev/jz4740_lcd.h
  create mode 100644 drivers/video/fbdev/jz4740_slcd.h
  create mode 100644 drivers/video/fbdev/jz4740_slcd_fb.c
@@ -359,10 +359,10 @@ index 000000000000..17500e8d045e
 +#endif  /*__JZ4740_SLCD_H__*/
 diff --git a/drivers/video/fbdev/jz4740_slcd_fb.c b/drivers/video/fbdev/jz4740_slcd_fb.c
 new file mode 100644
-index 000000000000..619c38320ddb
+index 000000000000..355c369f2dfa
 --- /dev/null
 +++ b/drivers/video/fbdev/jz4740_slcd_fb.c
-@@ -0,0 +1,923 @@
+@@ -0,0 +1,945 @@
 +/*
 + *  Copyright (C) 2009-2010, Lars-Peter Clausen <lars@metafoo.de>
 + *  Copyright (C) 2010, Maarten ter Huurne <maarten@treewalker.org>
@@ -534,6 +534,28 @@ index 000000000000..619c38320ddb
 +		       DMA_TO_DEVICE);
 +
 +	gpiod_set_value(jzfb->cs, GPIOD_OUT_HIGH);
++
++	// reset the write position horizontal & vertical
++	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
++	writel(BIT(31) | 0x00, jzfb->base + JZ_REG_SLCD_DATA);
++	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
++	writel(BIT(31) | 0x20, jzfb->base + JZ_REG_SLCD_DATA);
++
++	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
++	writel(0x00, jzfb->base + JZ_REG_SLCD_DATA);
++	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
++	writel(0x00, jzfb->base + JZ_REG_SLCD_DATA);
++
++	// reset the write position horizontal & vertical
++	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
++	writel(BIT(31) | 0x00, jzfb->base + JZ_REG_SLCD_DATA);
++	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
++	writel(BIT(31) | 0x21, jzfb->base + JZ_REG_SLCD_DATA);
++
++	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
++	writel(0x00, jzfb->base + JZ_REG_SLCD_DATA);
++	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
++	writel(0x00, jzfb->base + JZ_REG_SLCD_DATA);
 +
 +	// set the write address to GRAM
 +	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);

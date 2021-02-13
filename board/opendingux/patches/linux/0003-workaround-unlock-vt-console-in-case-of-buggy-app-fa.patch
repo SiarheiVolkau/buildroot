@@ -1,0 +1,28 @@
+From c9ac11bbfff2a82d80e16469a8ad50742304a3ed Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Sat, 13 Feb 2021 16:33:28 +0300
+Subject: [PATCH 3/3] workaround: unlock vt console in case of buggy app fails
+
+---
+ drivers/tty/vt/vt.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/drivers/tty/vt/vt.c b/drivers/tty/vt/vt.c
+index d04a162939a4..ad494aa12bd2 100644
+--- a/drivers/tty/vt/vt.c
++++ b/drivers/tty/vt/vt.c
+@@ -3396,6 +3396,11 @@ static void con_shutdown(struct tty_struct *tty)
+ 	struct vc_data *vc = tty->driver_data;
+ 	BUG_ON(vc == NULL);
+ 	console_lock();
++	if (vc->vc_num == fg_console && vt_dont_switch) {
++		vt_dont_switch = false;
++		reset_vc(vc);
++		do_unblank_screen(1);
++	}
+ 	vc->port.tty = NULL;
+ 	console_unlock();
+ }
+-- 
+2.13.6
+
