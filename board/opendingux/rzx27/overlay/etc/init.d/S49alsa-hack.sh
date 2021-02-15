@@ -8,3 +8,6 @@
 
 # Unmute DAC
 amixer -q -D hw:rs90audio cset "name='Master Playback Switch'" on
+
+# It's too loud by default
+amixer -q sset Master 22dB-

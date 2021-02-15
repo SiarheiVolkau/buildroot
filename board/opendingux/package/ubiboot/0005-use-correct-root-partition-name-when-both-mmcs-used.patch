@@ -1,0 +1,29 @@
+From 41550c3080af39b9472ed930d32c6b101d41c241 Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Sat, 13 Feb 2021 17:46:46 +0300
+Subject: [PATCH 5/6] use correct root partition name when both mmcs used
+
+---
+ src/main.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/main.c b/src/main.c
+index 04b13e8..498f91e 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -229,6 +229,12 @@ void c_main(void)
+ 
+ 			if (exec_addr) {
+ #if PASS_ROOTFS_PARAMS
++#ifdef TRY_BOTH_MMCS
++				if (mmc == 1) {
++					kernel_params[PARAM_ROOTDEV] =
++						"root=/dev/mmcblk1p1";
++				} else
++#endif
+ 				kernel_params[PARAM_ROOTDEV] =
+ 						"root=/dev/mmcblk0p1";
+ 				kernel_params[PARAM_ROOTTYPE] = "rootfstype=vfat";
+-- 
+2.13.6
+

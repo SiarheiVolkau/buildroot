@@ -1,0 +1,97 @@
+From c4ba901601e2421f7150a238e64b83b4077a148d Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Sun, 14 Feb 2021 17:50:05 +0300
+Subject: [PATCH] add volume control keys handling
+
+---
+ include/SDL_keysym.h                | 2 ++
+ src/events/SDL_keyboard.c           | 3 +++
+ src/video/fbcon/SDL_fbevents.c      | 8 +++++++-
+ src/video/fbcon/SDL_fbkeys.h        | 3 +++
+ src/video/kmsdrm/SDL_kmsdrmevents.c | 3 +++
+ 5 files changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/include/SDL_keysym.h b/include/SDL_keysym.h
+index f2ad12b8..e2950c80 100644
+--- a/include/SDL_keysym.h
++++ b/include/SDL_keysym.h
+@@ -297,6 +297,8 @@ typedef enum {
+         /*@}*/
+ 
+ 	/* Add any other keys here */
++	SDLK_VOLUMEDOWN		= 323,
++	SDLK_VOLUMEUP		= 324,
+ 
+ 	SDLK_LAST
+ } SDLKey;
+diff --git a/src/events/SDL_keyboard.c b/src/events/SDL_keyboard.c
+index 0ca7915d..7140d00c 100644
+--- a/src/events/SDL_keyboard.c
++++ b/src/events/SDL_keyboard.c
+@@ -331,6 +331,9 @@ int SDL_KeyboardInit(void)
+ 	keynames[SDLK_EURO] = "euro";
+ 	keynames[SDLK_UNDO] = "undo";
+ 
++	keynames[SDLK_VOLUMEUP] = "volume+";
++	keynames[SDLK_VOLUMEDOWN] = "volume-";
++
+ 	/* Done.  Whew. */
+ 	return(0);
+ }
+diff --git a/src/video/fbcon/SDL_fbevents.c b/src/video/fbcon/SDL_fbevents.c
+index d6648938..c5ff5b93 100644
+--- a/src/video/fbcon/SDL_fbevents.c
++++ b/src/video/fbcon/SDL_fbevents.c
+@@ -1122,6 +1122,12 @@ void FB_InitOSKeymap(_THIS)
+ 	  case SCANCODE_RIGHTALT:
+ 	    keymap[i] = SDLK_RALT;
+ 	    break;
++	  case SCANCODE_VOLUMEUP:
++	    keymap[i] = SDLK_VOLUMEUP;
++	    break;
++	  case SCANCODE_VOLUMEDOWN:
++	    keymap[i] = SDLK_VOLUMEDOWN;
++	    break;
+ 	  case 127:
+ 	    keymap[i] = SDLK_MENU;
+ 	    break;
+@@ -1196,7 +1202,7 @@ void FB_InitOSKeymap(_THIS)
+ 	    case K_PAUSE: keymap[i] = SDLK_PAUSE;     break;
+ 
+ 	    case 127: keymap[i] = SDLK_BACKSPACE; break;
+-	     
++
+ 	    default: break;
+ 	  }
+ 	}
+diff --git a/src/video/fbcon/SDL_fbkeys.h b/src/video/fbcon/SDL_fbkeys.h
+index 2b01b6b2..c80217e5 100644
+--- a/src/video/fbcon/SDL_fbkeys.h
++++ b/src/video/fbcon/SDL_fbkeys.h
+@@ -134,6 +134,9 @@
+ #define SCANCODE_INSERT			110
+ #define SCANCODE_REMOVE			111
+ 
++#define SCANCODE_VOLUMEDOWN		114
++#define SCANCODE_VOLUMEUP		115
++
+ #define SCANCODE_RIGHTWIN		126
+ #define SCANCODE_LEFTWIN		125
+ 
+diff --git a/src/video/kmsdrm/SDL_kmsdrmevents.c b/src/video/kmsdrm/SDL_kmsdrmevents.c
+index 27bbbdf7..5867a1ca 100644
+--- a/src/video/kmsdrm/SDL_kmsdrmevents.c
++++ b/src/video/kmsdrm/SDL_kmsdrmevents.c
+@@ -247,6 +247,9 @@ static const SDLKey keymap[] = {
+ 	[KEY_HELP] = SDLK_HELP,
+ 	[KEY_MENU] = SDLK_MENU,
+ 
++	[KEY_VOLUMEUP]   = SDLK_VOLUMEUP,
++	[KEY_VOLUMEDOWN] = SDLK_VOLUMEDOWN,
++
+ 	[KEY_F13] = SDLK_F13,
+ 	[KEY_F14] = SDLK_F14,
+ 	[KEY_F15] = SDLK_F15,
+-- 
+2.13.6
+

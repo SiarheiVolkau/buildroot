@@ -1,0 +1,176 @@
+From b3a277dfae481e4c1e28b1f4184c1b12533b074c Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Sat, 13 Feb 2021 17:43:57 +0300
+Subject: [PATCH 4/4] rzx-27: device tree cleanup and enable mmc0
+
+---
+ arch/mips/boot/dts/ingenic/rzx27.dts | 72 +++++++-----------------------------
+ 1 file changed, 13 insertions(+), 59 deletions(-)
+
+diff --git a/arch/mips/boot/dts/ingenic/rzx27.dts b/arch/mips/boot/dts/ingenic/rzx27.dts
+index 33b324cba5d2..ceb977d8360a 100644
+--- a/arch/mips/boot/dts/ingenic/rzx27.dts
++++ b/arch/mips/boot/dts/ingenic/rzx27.dts
+@@ -7,14 +7,11 @@
+ #include <dt-bindings/iio/adc/ingenic,adc.h>
+ #include <dt-bindings/input/linux-event-codes.h>
+ 
+-//#define DEBUG
+-
+ / {
+ 	compatible = "ritmix,rzx27", "ingenic,jz4725b";
+ 	model = "Ritmix RZX-27";
+ 
+ 	chosen {
+-		stdout-path = "/serial@10030000:57600";
+ 		bootargs = "root=/dev/mmcblk0p1 rw rootwait init=/sbin/init clk_ignore_unused";
+ 	};
+ 
+@@ -23,19 +20,6 @@
+ 		reg = <0x0 0x2000000>;
+ 	};
+ 
+-#ifndef DEBUG
+-	reserved-memory {
+-		#address-cells = <1>;
+-		#size-cells = <1>;
+-		ranges;
+-
+-		vmem: video-memory@1f00000 {
+-			compatible = "shared-dma-pool";
+-			reg = <0x1f00000 0x100000>;
+-			reusable;
+-		};
+-	};
+-
+ 	vcc: regulator {
+ 		compatible = "regulator-fixed";
+ 
+@@ -52,8 +36,10 @@
+ 		brightness-levels = <0 16 32 48 64 80 112 144 192 255>;
+ 		default-brightness-level = <5>;
+ 
+-		pinctrl-names = "default";
+-		pinctrl-0 = <&pins_pwm5>;
++		pinctrl-names = "init", "sleep", "default";
++		pinctrl-0 = <&pins_pwm5_sleep>;
++		pinctrl-1 = <&pins_pwm5_sleep>;
++		pinctrl-2 = <&pins_pwm5>;
+ 
+ 		power-supply = <&vcc>;
+ 	};
+@@ -197,18 +183,6 @@
+ 		vcc-supply = <&vcc>;
+ 	};
+ 
+-	panel {
+-		compatible = "sharp,ls020b1dd01d";
+-		backlight = <&backlight>;
+-		power-supply = <&vcc>;
+-
+-		port {
+-			panel_input: endpoint {
+-				remote-endpoint = <&panel_output>;
+-			};
+-		};
+-	};
+-#endif
+ 	battery: battery {
+ 		compatible = "simple-battery";
+ 		voltage-min-design-microvolt = <3692000>;
+@@ -240,13 +214,11 @@
+ 		opp-300000000 { opp-hz = /bits/ 64 <300000000>; };
+ 		opp-336000000 { opp-hz = /bits/ 64 <336000000>; };
+ 		opp-360000000 { opp-hz = /bits/ 64 <360000000>; };
+-#ifndef DEBUG
+ 		opp-378000000 { opp-hz = /bits/ 64 <378000000>; };
+ 		opp-396000000 { opp-hz = /bits/ 64 <396000000>; };
+ 		opp-420000000 { opp-hz = /bits/ 64 <420000000>; };
+ 		opp-438000000 { opp-hz = /bits/ 64 <438000000>; };
+ 		opp-456000000 { opp-hz = /bits/ 64 <456000000>; };
+-#endif
+ 	};
+ 
+ 	slcd: slcd-controller@13050000 {
+@@ -278,17 +250,22 @@
+ &rtc_dev {
+ 	system-power-controller;
+ };
+-#ifndef DEBUG
++
+ &udc {
+ 	phys = <&usb_phy>;
+ };
+-#endif
++
+ &pinctrl {
+ 	pins_mmc1: mmc1 {
+ 		function = "mmc1";
+ 		groups = "mmc1-1bit";
+ 	};
+ 
++	pins_pwm5_sleep: pwm5-sleep {
++		pins = "PC15";
++		output-low;
++	};
++
+ 	pins_pwm5: pwm5 {
+ 		function = "pwm5";
+ 		groups = "pwm5";
+@@ -302,7 +279,7 @@
+ };
+ 
+ &mmc0 {
+-	status = "disabled";
++	status = "okay";
+ };
+ 
+ &mmc1 {
+@@ -317,12 +294,8 @@
+ 
+ &uart {
+ 	/*
+-	 * The pins for RX/TX are used for the right shoulder button and
+-	 * backlight PWM.
++	 * The pin for RX are used for the Smart LCD CS pin.
+ 	 */
+-	/*
+-	status = "disabled";
+-	*/
+ 	status = "okay";
+ };
+ 
+@@ -347,25 +320,7 @@
+ };
+ 
+ &lcd {
+-#if 1
+ 	status = "disabled";
+-#else
+-	memory-region = <&vmem>;
+-
+-	pinctrl-names = "default";
+-	pinctrl-0 = <&pins_lcd>;
+-#endif
+-};
+-
+-#ifndef DEBUG
+-&lcd_ports {
+-	port@0 {
+-		reg = <0>;
+-
+-		panel_output: endpoint {
+-			remote-endpoint = <&panel_input>;
+-		};
+-	};
+ };
+ 
+ &cpu0 {
+@@ -374,4 +329,3 @@
+ 	/* We use the main PLL as the CPU clock for the cpufreq driver. */
+ 	clocks = <&cgu JZ4725B_CLK_PLL>;
+ };
+-#endif
+-- 
+2.13.6
+
