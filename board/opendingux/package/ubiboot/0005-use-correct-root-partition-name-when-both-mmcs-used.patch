@@ -1,7 +1,7 @@
 From 41550c3080af39b9472ed930d32c6b101d41c241 Mon Sep 17 00:00:00 2001
 From: Sergey Volkov <Sergey.Volkov@promwad.com>
 Date: Sat, 13 Feb 2021 17:46:46 +0300
-Subject: [PATCH 5/6] use correct root partition name when both mmcs used
+Subject: [PATCH 5/7] use correct root partition name when both mmcs used
 
 ---
  src/main.c | 6 ++++++

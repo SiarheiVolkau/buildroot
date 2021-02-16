@@ -1,0 +1,138 @@
+From f562acfa2cb7f368df206e17b3d5c0d70c4e8074 Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Tue, 16 Feb 2021 18:15:15 +0300
+Subject: [PATCH 7/7] allow use ubiboot as replacement for original bootloader
+ for RZX-27
+
+---
+ Makefile          |  4 ++--
+ src/board-rzx27.c | 21 ---------------------
+ src/main.c        | 27 +++++++++++++++++++++++++--
+ src/serial.c      |  2 +-
+ 4 files changed, 28 insertions(+), 26 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index c5ae7e2..951c6d6 100644
+--- a/Makefile
++++ b/Makefile
+@@ -20,7 +20,7 @@ OBJCOPY = $(CROSS_COMPILE)objcopy
+ OBJDUMP = $(CROSS_COMPILE)objdump
+ NM = $(CROSS_COMPILE)nm
+ 
+-CFLAGS	:= -Wall -Os -fno-pic -mno-abicalls -mno-check-zero-division -ffreestanding -flto
++CFLAGS	:= -Wall -Wextra -Os -fno-pic -mno-abicalls -mno-check-zero-division -ffreestanding -flto
+ CFLAGS	+= $(CFLAGS_all)
+ CPPFLAGS := -DBOARD_$(BOARD) -DJZ_VERSION=$(JZ_VERSION)
+ LDFLAGS := -nostdlib -EL
+@@ -41,7 +41,7 @@ OUTDIR	:= output/$(CONFIG)
+ OBJS	:= utils.o mmc.o fat.o head.o uimage.o
+ 
+ ifdef GC_FUNCTIONS
+-	CFLAGS += -ffunction-sections
++	CFLAGS += -ffunction-sections -fdata-sections
+ 	LDFLAGS += -Wl,--gc-sections
+ endif
+ 
+diff --git a/src/board-rzx27.c b/src/board-rzx27.c
+index c485957..83c42da 100644
+--- a/src/board-rzx27.c
++++ b/src/board-rzx27.c
+@@ -415,27 +415,6 @@ static void init_smart_lcd_8230(void)
+ 	clear_slcd_screen();
+ 
+ 	__gpio_set_pin(GPIOC, 13);
+-
+-	/* Preparing Smart LCD controller to work in Linux */
+-
+-	/* RS pin */
+-	__gpio_as_func(GPIOD, 19, 2);
+-	/* #WR pin */
+-	__gpio_as_func(GPIOD, 20, 2);
+-	/* #RD pin */
+-	__gpio_as_func(GPIOD, 18, 2);
+-
+-	/* DATA 7..0 */
+-	__gpio_as_func_mask(GPIOD, 0xff, 2);
+-
+-	// Mux Smart pins, enable LCM mode
+-	LCD_REG_CFG = BIT(31) | (0x0d) | BIT(23) | BIT(22) | BIT(21) | BIT(20);
+-	LCD_REG_SCFG = 0x00004d02;
+-	LCD_REG_SCTL = BIT(0);
+-	while (LCD_REG_SSTAT != 0);
+-
+-
+-	__gpio_clear_pin(GPIOC, 13);
+ }
+ #endif
+ 
+diff --git a/src/main.c b/src/main.c
+index f777ab5..c50e16d 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -20,6 +20,8 @@
+ #include "jz.h"
+ #include "utils.h"
+ 
++#include "jz4740-gpio.h"
++
+ /* Time how long UBIBoot takes to do its job.
+  * Uses the JZ4770 OST, so won't work on JZ4740.
+  */
+@@ -253,13 +255,35 @@ void c_main(void)
+ #endif
+ 	}
+ 
++#ifdef TRY_BOTH_MMCS
++	if (mmc_inited && !exec_addr) {
++		// internal mmc0 present
++		// try boot factory software
++		// original firmware is at 256kB offset on SD card.
++		#define ORIG_LD_ADDR (0x00800000)
++		// load 1M bytes into RAM from 512 blocks (256kB) offset on SD card.
++		if (!mmc_block_read(0, (void *) (KSEG1 + ORIG_LD_ADDR), 512, 2048)) {
++			SERIAL_PUTS("Trying load original firmware from SD0.\n");
++
++			// reset the LCD controller for proper reintialization
++			__gpio_clear_pin(GPIOD, 21);
++			udelay(1000);
++			__gpio_set_pin(GPIOD, 21);
++
++			// jump into firmware
++			void (*entry)(void) = (void (*)(void))(KSEG1 + ORIG_LD_ADDR);
++			entry();
++		}
++	}
++#endif
++
+ 	if (!mmc_inited || !exec_addr) {
+ 		SERIAL_PUTS("Unable to boot from SD."
+ #ifdef USE_NAND
+ 					" Falling back to NAND."
+ #endif
+ 					"\n");
+-#ifndef USE_NAND
++#if !defined(USE_NAND) && !defined(TRY_BOTH_MMCS)
+ 		return;
+ #endif
+ 	}
+@@ -317,4 +341,3 @@ void c_main(void)
+ 	((kernel_main) exec_addr) (
+ 			ARRAY_SIZE(kernel_params), kernel_params, NULL, NULL );
+ }
+-
+diff --git a/src/serial.c b/src/serial.c
+index b31583b..b0b4cf4 100644
+--- a/src/serial.c
++++ b/src/serial.c
+@@ -119,7 +119,7 @@ void serial_puti(unsigned int value)
+ 		}
+ 	} else {
+ 		message[0] = 0;
+-		i++;
++		i = 1;
+ 	}
+ 
+ 	for (; i; i--)
+-- 
+2.13.6
+

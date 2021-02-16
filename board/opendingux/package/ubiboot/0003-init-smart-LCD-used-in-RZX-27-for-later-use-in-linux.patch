@@ -1,7 +1,7 @@
 From e6e0b4dd5bf6af8139b2b4eec66134c309deafdb Mon Sep 17 00:00:00 2001
 From: Sergey Volkov <Sergey.Volkov@promwad.com>
 Date: Sat, 6 Feb 2021 20:42:51 +0300
-Subject: [PATCH 3/6] init smart LCD used in RZX-27 for later use in linux
+Subject: [PATCH 3/7] init smart LCD used in RZX-27 for later use in linux
 
 ---
  src/board-rzx27.c | 232 ++++++++++++++++++++++++++++++++++++++++++++++++++++++
