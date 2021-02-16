@@ -30,5 +30,6 @@ fi
 if [ -x ~/.autostart ]; then
 	exec ~/.autostart
 else
+	export HOME=/media/data/local/home
 	exec /usr/bin/gmenu2x
 fi
