@@ -1,7 +1,7 @@
 From 175ad4ce1d8a0b8b09080c6c252b22b0418dc2f8 Mon Sep 17 00:00:00 2001
 From: Sergey Volkov <Sergey.Volkov@promwad.com>
 Date: Sun, 7 Feb 2021 17:01:50 +0300
-Subject: [PATCH 2/4] fbdev: add ingenic smart lcd framebuffer support
+Subject: [PATCH 2/5] fbdev: add ingenic smart lcd framebuffer support
 
 ---
  drivers/video/fbdev/Kconfig          |  10 +

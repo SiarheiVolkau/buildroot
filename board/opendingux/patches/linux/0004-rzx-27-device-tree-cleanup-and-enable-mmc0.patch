@@ -1,7 +1,7 @@
 From b3a277dfae481e4c1e28b1f4184c1b12533b074c Mon Sep 17 00:00:00 2001
 From: Sergey Volkov <Sergey.Volkov@promwad.com>
 Date: Sat, 13 Feb 2021 17:43:57 +0300
-Subject: [PATCH 4/4] rzx-27: device tree cleanup and enable mmc0
+Subject: [PATCH 4/5] rzx-27: device tree cleanup and enable mmc0
 
 ---
  arch/mips/boot/dts/ingenic/rzx27.dts | 72 +++++++-----------------------------
