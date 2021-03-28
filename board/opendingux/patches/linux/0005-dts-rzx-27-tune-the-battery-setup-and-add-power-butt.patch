@@ -1,7 +1,7 @@
-From 5a4702611ec70ea814e09ea75646d4c9f7db30ad Mon Sep 17 00:00:00 2001
+From 13183ed1c2fed1bc1d196087bb5ac57f52ce2fbb Mon Sep 17 00:00:00 2001
 From: Sergey Volkov <Sergey.Volkov@promwad.com>
 Date: Thu, 18 Feb 2021 08:28:16 +0300
-Subject: [PATCH 5/5] dts: rzx-27: tune the battery setup and add power button
+Subject: [PATCH 5/9] dts: rzx-27: tune the battery setup and add power button
 
 ---
  arch/mips/boot/dts/ingenic/rzx27.dts | 32 ++++++++++++++++++++++++++++----

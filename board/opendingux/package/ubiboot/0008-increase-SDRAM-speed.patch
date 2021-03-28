@@ -1,0 +1,29 @@
+From bfd33399fe944de5c3a30a2c9ea2fee692aa95ce Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Sat, 20 Mar 2021 18:02:36 +0300
+Subject: [PATCH 8/8] increase SDRAM speed
+
+---
+ src/board-rzx27.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/board-rzx27.c b/src/board-rzx27.c
+index 95e07ff..6e5d293 100644
+--- a/src/board-rzx27.c
++++ b/src/board-rzx27.c
+@@ -22,9 +22,9 @@
+ #include "jz4740-lcd.h"
+ 
+ #define CDIV 1
+-#define HDIV 3
+-#define PDIV 3
+-#define MDIV 3
++#define HDIV 2
++#define PDIV 2
++#define MDIV 2
+ #define LDIV 3
+ 
+ /* PLL output clock = EXTAL * NF / (NR * NO)
+-- 
+2.13.6
+

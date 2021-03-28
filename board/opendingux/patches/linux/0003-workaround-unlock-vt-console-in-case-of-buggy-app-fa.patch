@@ -1,7 +1,7 @@
-From c9ac11bbfff2a82d80e16469a8ad50742304a3ed Mon Sep 17 00:00:00 2001
+From 02168e85ff40ef3147ad80527ba1e6c0403f52ec Mon Sep 17 00:00:00 2001
 From: Sergey Volkov <Sergey.Volkov@promwad.com>
 Date: Sat, 13 Feb 2021 16:33:28 +0300
-Subject: [PATCH 3/5] workaround: unlock vt console in case of buggy app fails
+Subject: [PATCH 3/9] workaround: unlock vt console in case of buggy app fails
 
 ---
  drivers/tty/vt/vt.c | 5 +++++
