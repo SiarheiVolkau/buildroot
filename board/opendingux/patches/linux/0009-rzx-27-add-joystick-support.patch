@@ -1,0 +1,68 @@
+From d423fb7048ac40ba6f144dfa42ce98c0951adbb0 Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Mon, 29 Mar 2021 22:37:04 +0300
+Subject: [PATCH 9/9] rzx-27: add joystick support
+
+---
+ arch/mips/boot/dts/ingenic/rzx27.dts | 45 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 45 insertions(+)
+
+diff --git a/arch/mips/boot/dts/ingenic/rzx27.dts b/arch/mips/boot/dts/ingenic/rzx27.dts
+index 191d6dbdc4dd..47cfb0bc77f5 100644
+--- a/arch/mips/boot/dts/ingenic/rzx27.dts
++++ b/arch/mips/boot/dts/ingenic/rzx27.dts
+@@ -231,6 +231,51 @@
+ 		monitored-battery = <&battery>;
+ 	};
+ 
++	adcmux: adc-mux {
++		compatible = "io-channel-mux";
++		io-channels = <&adc INGENIC_ADC_AUX>;
++		io-channel-names = "parent";
++		#io-channel-cells = <1>;
++
++		mux-controls = <&gpio_mux>;
++
++		channels = "joystick-axis-y", "joystick-axis-x";
++	};
++
++	gpio_mux: mux-controller {
++		compatible = "gpio-mux";
++		#mux-control-cells = <0>;
++
++		mux-gpios = <&gpd 22 GPIO_ACTIVE_HIGH>;
++	};
++
++	joystick: joystick {
++		compatible = "adc-joystick";
++		io-channels = <&adcmux 0>, <&adcmux 1>;
++		io-channel-names = "joystick-axis-y", "joystick-axis-x";
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		poll-frequency = <60>;
++
++		axis@0 {
++			reg = <0>;
++			linux,code = <ABS_Y>;
++			abs-range = <289 3446>;
++			abs-fuzz = <0>;
++			abs-flat = <0>;
++		};
++
++		axis@1 {
++			reg = <1>;
++			linux,code = <ABS_X>;
++			abs-range = <3446 289>;
++			abs-fuzz = <0>;
++			abs-flat = <0>;
++		};
++
++	};
++
+ 	cpu_opp_table: opp-table {
+ 		compatible = "operating-points-v2";
+ 
+-- 
+2.13.6
+

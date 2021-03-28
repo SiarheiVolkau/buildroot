@@ -1,0 +1,167 @@
+From 9f5ea182f6ab8c9911c1ab699f582155875d5334 Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Mon, 29 Mar 2021 22:36:20 +0300
+Subject: [PATCH 8/9] adc joystick: add direct IO mode with polling
+
+---
+ .../devicetree/bindings/input/adc-joystick.yaml    |  6 ++
+ drivers/input/joystick/adc-joystick.c              | 85 +++++++++++++++++-----
+ 2 files changed, 71 insertions(+), 20 deletions(-)
+
+diff --git a/Documentation/devicetree/bindings/input/adc-joystick.yaml b/Documentation/devicetree/bindings/input/adc-joystick.yaml
+index 054406bbd22b..e06a67c8bdfe 100644
+--- a/Documentation/devicetree/bindings/input/adc-joystick.yaml
++++ b/Documentation/devicetree/bindings/input/adc-joystick.yaml
+@@ -32,6 +32,12 @@ properties:
+   '#size-cells':
+     const: 0
+ 
++  poll-frequency:
++    $ref: /schemas/types.yaml#/definitions/uint32
++        description: >
++          Polling frequency in DirectIO mode.
++          Physically limited by CONFIG_HZ granularity.
++
+ required:
+   - compatible
+   - io-channels
+diff --git a/drivers/input/joystick/adc-joystick.c b/drivers/input/joystick/adc-joystick.c
+index f5d8ee356e06..7115968300ff 100644
+--- a/drivers/input/joystick/adc-joystick.c
++++ b/drivers/input/joystick/adc-joystick.c
+@@ -10,6 +10,8 @@
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
+ #include <linux/property.h>
++#include <linux/gpio.h>
++#include <linux/workqueue.h>
+ 
+ struct adc_joystick_axis {
+ 	u32 code;
+@@ -24,6 +26,9 @@ struct adc_joystick {
+ 	struct adc_joystick_axis *axes;
+ 	struct iio_channel *chans;
+ 	int num_chans;
++	bool io_direct;
++	u32  sched_wait_ticks;
++	struct delayed_work poll_work;
+ };
+ 
+ static int adc_joystick_handle(const void *data, void *private)
+@@ -70,14 +75,39 @@ static int adc_joystick_handle(const void *data, void *private)
+ 	return 0;
+ }
+ 
++static void adc_joystick_poll(struct work_struct *work)
++{
++	struct adc_joystick *joy = container_of(work, struct adc_joystick, poll_work.work);
++	int val, i;
++
++	for (i = 0; i < joy->num_chans; ++i) {
++		int err = iio_read_channel_raw(&joy->chans[i], &val);
++		if (err < 0) {
++			dev_err(&joy->input->dev, "Failed to read IIO channel %d raw data %d\n", i, err);
++			continue;
++		} else if (err != IIO_VAL_INT) {
++			dev_err(&joy->input->dev, "Unable to convert IIO value of type %d\n", err);
++			continue;
++		}
++		input_report_abs(joy->input, joy->axes[i].code, val);
++	}
++	input_sync(joy->input);
++	schedule_delayed_work(&joy->poll_work, joy->sched_wait_ticks);
++}
++
+ static int adc_joystick_open(struct input_dev *dev)
+ {
+ 	struct adc_joystick *joy = input_get_drvdata(dev);
+ 	int ret;
+ 
+-	ret = iio_channel_start_all_cb(joy->buffer);
+-	if (ret)
+-		dev_err(dev->dev.parent, "Unable to start callback buffer\n");
++	if (joy->io_direct) {
++		schedule_delayed_work(&joy->poll_work, 0);
++		ret = 0;
++	} else {
++		ret = iio_channel_start_all_cb(joy->buffer);
++		if (ret)
++			dev_err(dev->dev.parent, "Unable to start callback buffer\n");
++	}
+ 
+ 	return ret;
+ }
+@@ -86,7 +116,10 @@ static void adc_joystick_close(struct input_dev *dev)
+ {
+ 	struct adc_joystick *joy = input_get_drvdata(dev);
+ 
+-	iio_channel_stop_all_cb(joy->buffer);
++	if (joy->io_direct)
++		cancel_delayed_work_sync(&joy->poll_work);
++	else
++		iio_channel_stop_all_cb(joy->buffer);
+ }
+ 
+ static void adc_joystick_cleanup(void *data)
+@@ -181,14 +214,12 @@ static int adc_joystick_probe(struct platform_device *pdev)
+ 	/* Count how many channels we got. NULL terminated. */
+ 	for (i = 0; joy->chans[i].indio_dev; ++i) {
+ 		bits = joy->chans[i].channel->scan_type.storagebits;
+-		if (!bits || (bits > 16)) {
+-			dev_err(dev, "Unsupported channel storage size\n");
+-			return -EINVAL;
+-		}
+-		if (bits != joy->chans[0].channel->scan_type.storagebits) {
+-			dev_err(dev, "Channels must have equal storage size\n");
+-			return -EINVAL;
+-		}
++		if (!bits || (bits > 16))
++			joy->io_direct = true;
++		if (bits != joy->chans[0].channel->scan_type.storagebits)
++			joy->io_direct = true;
++		if (joy->chans[i].channel->scan_index == -1)
++			joy->io_direct = true;
+ 	}
+ 	joy->num_chans = i;
+ 
+@@ -215,15 +246,29 @@ static int adc_joystick_probe(struct platform_device *pdev)
+ 		return ret;
+ 	}
+ 
+-	joy->buffer = iio_channel_get_all_cb(dev, adc_joystick_handle, joy);
+-	if (IS_ERR(joy->buffer)) {
+-		dev_err(dev, "Unable to allocate callback buffer\n");
+-		return PTR_ERR(joy->buffer);
+-	}
++	if (!joy->io_direct) {
++		joy->buffer = iio_channel_get_all_cb(dev, adc_joystick_handle, joy);
++		if (IS_ERR(joy->buffer)) {
++			dev_err(dev, "Unable to allocate callback buffer\n");
++			return PTR_ERR(joy->buffer);
++		}
+ 
+-	ret = devm_add_action_or_reset(dev, adc_joystick_cleanup, joy->buffer);
+-	if (ret)
+-		dev_err(dev, "Unable to add action\n");
++		ret = devm_add_action_or_reset(dev, adc_joystick_cleanup, joy->buffer);
++		if (ret) {
++			dev_err(dev, "Unable to add action\n");
++			return ret;
++		}
++	} else {
++		u32 poll_freq = HZ;
++
++		of_property_read_u32(dev->of_node, "poll-frequency", &poll_freq);
++		if (!poll_freq) {
++			dev_err(dev, "Invalid poll-frequency specified\n");
++			return -EINVAL;
++		}
++		joy->sched_wait_ticks = DIV_ROUND_UP(HZ, poll_freq);
++		INIT_DELAYED_WORK(&joy->poll_work, adc_joystick_poll);
++	}
+ 
+ 	return ret;
+ }
+-- 
+2.13.6
+
