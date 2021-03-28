@@ -1,0 +1,33 @@
+From cf6e009ff0d7b4a89da0d8052a4c3d5e453716c1 Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Thu, 18 Feb 2021 18:53:04 +0300
+Subject: [PATCH 6/9] fix: swap X and Y buttons
+
+---
+ arch/mips/boot/dts/ingenic/rzx27.dts | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/mips/boot/dts/ingenic/rzx27.dts b/arch/mips/boot/dts/ingenic/rzx27.dts
+index 6418e6b0b57c..54176c041e02 100644
+--- a/arch/mips/boot/dts/ingenic/rzx27.dts
++++ b/arch/mips/boot/dts/ingenic/rzx27.dts
+@@ -95,14 +95,14 @@
+ 
+ 		key@6 {
+ 			label = "Button X";
+-			linux,code = <KEY_LEFTSHIFT>;
++			linux,code = <KEY_SPACE>;
+ 			linux,can-disable;
+ 			gpios = <&gpd 16 GPIO_ACTIVE_LOW>;
+ 		};
+ 
+ 		key@7 {
+ 			label = "Button Y";
+-			linux,code = <KEY_SPACE>;
++			linux,code = <KEY_LEFTSHIFT>;
+ 			linux,can-disable;
+ 			gpios = <&gpd 17 GPIO_ACTIVE_LOW>;
+ 		};
+-- 
+2.13.6
+
