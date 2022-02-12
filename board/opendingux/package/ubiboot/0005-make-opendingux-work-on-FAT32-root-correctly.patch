@@ -1,0 +1,40 @@
+From 447a95ba257b98164781ff93342a216805b146ba Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Mon, 7 Feb 2022 19:43:32 +0300
+Subject: [PATCH 5/8] make opendingux work on FAT32 root correctly
+
+---
+ src/main.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/main.c b/src/main.c
+index 7c191ea..57c3162 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -51,6 +51,7 @@ enum {
+ 	PARAM_ROOTDEV,
+ 	PARAM_ROOTTYPE,
+ 	PARAM_ROOTWAIT,
++	PARAM_ROOTFLAGS,
+ #endif
+ #ifdef SYSPART_INIT
+ 	PARAM_READONLY,
+@@ -101,6 +102,7 @@ static char *kernel_params[] = {
+ 	[PARAM_ROOTDEV] = "",
+ 	[PARAM_ROOTTYPE] = "",
+ 	[PARAM_ROOTWAIT] = "rootwait",
++	[PARAM_ROOTFLAGS] = "",
+ #endif
+ #ifdef SYSPART_INIT
+ 	[PARAM_READONLY] = "ro",
+@@ -235,6 +237,7 @@ void c_main(void)
+ #if PASS_ROOTFS_PARAMS
+ 			kernel_params[PARAM_ROOTDEV] = rootfs_dev;
+ 			kernel_params[PARAM_ROOTTYPE] = "rootfstype=vfat";
++			kernel_params[PARAM_ROOTFLAGS] = "rootflags=umask=000";
+ #endif
+ 		}
+ 	}
+-- 
+2.35.1
+

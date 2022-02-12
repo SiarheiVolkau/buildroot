@@ -1,0 +1,35 @@
+From 3b0605d847ad67965ca02ed1b4581c440fa6cdd9 Mon Sep 17 00:00:00 2001
+From: Siarhei Volkau <lis8215@gmail.com>
+Date: Mon, 24 Jan 2022 13:32:03 +0300
+Subject: [PATCH 3/5] translate the Explorer string
+
+---
+ data/translations/Russian | 1 +
+ src/gmenu2x.cpp           | 2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/data/translations/Russian b/data/translations/Russian
+index b41cd9f..a25308d 100644
+--- a/data/translations/Russian
++++ b/data/translations/Russian
+@@ -100,3 +100,4 @@ Wallpaper selection=Выбор картинки
+ Select a wallpaper from the list=Выберите картинку из списка
+ Show manual of $1=Показать инструкцию к $1
+ Select an icon for this link=Выбрать иконку этому ярлыку
++Explorer=Проводник
+diff --git a/src/gmenu2x.cpp b/src/gmenu2x.cpp
+index 8703fb2..d06c4dd 100644
+--- a/src/gmenu2x.cpp
++++ b/src/gmenu2x.cpp
+@@ -352,7 +352,7 @@ void GMenu2X::initMenu() {
+ 
+ 	// Add action links in the applications section.
+ 	auto appIdx = menu->sectionNamed("applications");
+-	menu->addActionLink(appIdx, "Explorer",
++	menu->addActionLink(appIdx, tr["Explorer"],
+ 			bind(&GMenu2X::explorer, this),
+ 			tr["Launch an application"],
+ 			"skin:icons/explorer.png");
+-- 
+2.34.1
+

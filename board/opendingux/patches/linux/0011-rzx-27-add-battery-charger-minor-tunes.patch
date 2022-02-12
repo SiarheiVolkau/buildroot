@@ -1,0 +1,100 @@
+From 7684a2bd68835690f2e005154f85875867379f8b Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Sun, 30 Jan 2022 16:42:12 +0300
+Subject: [PATCH 11/12] rzx-27: add battery charger, minor tunes
+
+---
+ arch/mips/boot/dts/ingenic/rzx27.dts | 38 +++++++++++++++++++++++++---
+ 1 file changed, 34 insertions(+), 4 deletions(-)
+
+diff --git a/arch/mips/boot/dts/ingenic/rzx27.dts b/arch/mips/boot/dts/ingenic/rzx27.dts
+index 47cfb0bc77f5..4c9195317449 100644
+--- a/arch/mips/boot/dts/ingenic/rzx27.dts
++++ b/arch/mips/boot/dts/ingenic/rzx27.dts
+@@ -160,8 +160,11 @@ key@14 {
+ 
+ 	amp: analog-amplifier {
+ 		compatible = "simple-audio-amplifier";
+-		enable-gpios = <&gpd 23 GPIO_ACTIVE_HIGH>;
+ 
++		pinctrl-names = "default";
++		pinctrl-0 = <&pins_amplifier>;
++
++		enable-gpios = <&gpd 23 GPIO_ACTIVE_HIGH>;
+ 		VCC-supply = <&vcc>;
+ 	};
+ 
+@@ -210,8 +213,8 @@ usb_phy: usb-phy {
+ 	battery: battery {
+ 		compatible = "simple-battery";
+ 		voltage-min-design-microvolt = <3700000>;
+-		voltage-max-design-microvolt = <3900000>;
+-		charge-full-design-microamp-hours = <1020000>;
++		voltage-max-design-microvolt = <3911000>;
++		charge-full-design-microamp-hours = <1000000>;
+ 	};
+ 
+ 	resistor: resistor {
+@@ -231,6 +234,16 @@ pmu {
+ 		monitored-battery = <&battery>;
+ 	};
+ 
++	usb_charger {
++		compatible = "gpio-charger";
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&pins_charger>;
++
++		charger-type = "usb-sdp";
++		gpios = <&gpd 12 GPIO_ACTIVE_HIGH>;
++	};
++
+ 	adcmux: adc-mux {
+ 		compatible = "io-channel-mux";
+ 		io-channels = <&adc INGENIC_ADC_AUX>;
+@@ -302,7 +315,7 @@ slcd: slcd-controller@13050000 {
+ 
+ &slcd {
+ 	pinctrl-names = "default";
+-	pinctrl-0 = <&pins_slcd>;
++	pinctrl-0 = <&pins_slcd>, <&pins_slcd_cs>;
+ 	backlight = <&backlight>;
+ 
+ 	cs-gpios = <&gpc 13 GPIO_ACTIVE_LOW>;
+@@ -331,6 +344,7 @@ pins_mmc1: mmc1 {
+ 	pins_pwm5_sleep: pwm5-sleep {
+ 		pins = "PC15";
+ 		output-low;
++		bias-disable;
+ 	};
+ 
+ 	pins_pwm5: pwm5 {
+@@ -343,9 +357,25 @@ pins_slcd: slcd {
+ 		function = "lcd";
+ 		groups = "lcd-8bit";
+ 	};
++
++	pins_slcd_cs: gpio@pc13 {
++		pins = "PC13";
++		bias-disable;
++	};
++
++	pins_charger: gpio@pd12 {
++		pins = "PD12";
++		bias-disable;
++	};
++
++	pins_amplifier: gpio@pd23 {
++		pins = "PD23";
++		bias-disable;
++	};
+ };
+ 
+ &mmc0 {
++	bus-width = <4>;
+ 	status = "okay";
+ };
+ 
+-- 
+2.34.1
+

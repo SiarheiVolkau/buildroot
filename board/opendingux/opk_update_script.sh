@@ -89,6 +89,10 @@ case $1 in
 		LAST_KERNEL=X
 		LAST_ROOTFS=Y
 		;;
+	rzx27)
+		LAST_KERNEL=X
+		LAST_ROOTFS=Y
+		;;
 esac
 
 dialog --msgbox 'Update complete!\nThe system will now restart.\n\n

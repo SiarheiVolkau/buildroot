@@ -1,0 +1,210 @@
+From fa38caee816f9adc6cbba99c1dfb576217b13e64 Mon Sep 17 00:00:00 2001
+From: Siarhei Volkau <lis8215@gmail.com>
+Date: Sat, 29 Jan 2022 13:06:34 +0300
+Subject: [PATCH 5/5] test power key and suspend
+
+---
+ src/gmenu2x.cpp      |  5 +++++
+ src/inputmanager.cpp | 25 ++++++++++++++++++++-----
+ src/inputmanager.h   |  9 ++++++---
+ src/powersaver.cpp   | 36 ++++++++++++++++++++++++++++++++++++
+ src/powersaver.h     |  2 ++
+ 5 files changed, 69 insertions(+), 8 deletions(-)
+
+diff --git a/src/gmenu2x.cpp b/src/gmenu2x.cpp
+index d06c4dd..78fb118 100644
+--- a/src/gmenu2x.cpp
++++ b/src/gmenu2x.cpp
+@@ -614,11 +614,16 @@ void GMenu2X::mainLoop() {
+ 			if (button == InputManager::QUIT) {
+ 				break;
+ 			}
++			bool handled = false;
+ 			for (auto it = layers.rbegin(); it != layers.rend(); ++it) {
+ 				if ((*it)->handleButtonPress(button)) {
++					handled = true;
+ 					break;
+ 				}
+ 			}
++			if (!handled && button == InputManager::POWER) {
++				PowerSaver::getInstance()->suspend();
++			}
+ 		}
+ 	}
+ }
+diff --git a/src/inputmanager.cpp b/src/inputmanager.cpp
+index 30d7881..b5bd4ee 100644
+--- a/src/inputmanager.cpp
++++ b/src/inputmanager.cpp
+@@ -108,8 +108,11 @@ bool InputManager::readConfFile(const string &conffile) {
+ 			else if (name == "altright") button = ALTRIGHT;
+ 			else if (name == "menu")     button = MENU;
+ 			else if (name == "settings") button = SETTINGS;
++			else if (name == "power")    button = POWER;
++			else if (name == "vol+")     button = VOL_UP;
++			else if (name == "vol-")     button = VOL_DN;
+ 			else {
+-				WARNING("InputManager: Ignoring unknown button name \"%s\"\n",
++				WARNING("InputManager: Ignoring unused by gmenu2x button name \"%s\"\n",
+ 						name.c_str());
+ 				continue;
+ 			}
+@@ -184,11 +187,14 @@ bool InputManager::getButton(Button *button, bool wait) {
+ 	else if (!SDL_PollEvent(&event))
+ 		return false;
+ 
+-	bool is_kb = false, is_js = false;
++	bool is_kb = false, is_js = false, is_key_release = false;
+ 	switch(event.type) {
+ 		case SDL_KEYDOWN:
+ 			is_kb = true;
+ 			break;
++		case SDL_KEYUP:
++			is_key_release = true;
++			break;
+ #ifndef SDL_JOYSTICK_DISABLED
+ 		case SDL_JOYHATMOTION: {
+ 				Joystick *joystick = &joysticks[event.jaxis.which];
+@@ -271,8 +277,10 @@ bool InputManager::getButton(Button *button, bool wait) {
+ 		for (i = 0; i < BUTTON_TYPE_SIZE; i++) {
+ 			if (buttonMap[i].kb_mapped
+ 					&& (unsigned int)event.key.keysym.sym == buttonMap[i].kb_code) {
+-				*button = static_cast<Button>(i);
+-				break;
++				if (i != static_cast<int>(POWER)) {
++					*button = static_cast<Button>(i);
++					break;
++				}
+ 			}
+ 		}
+ #ifndef SDL_JOYSTICK_DISABLED
+@@ -285,6 +293,13 @@ bool InputManager::getButton(Button *button, bool wait) {
+ 			}
+ 		}
+ #endif
++	} else if (is_key_release) {
++		if (buttonMap[POWER].kb_mapped && event.key.keysym.sym == buttonMap[POWER].kb_code) {
++			*button = POWER;
++			i = POWER;
++		} else {
++			i = BUTTON_TYPE_SIZE;
++		}
+ 	}
+ 
+ 	if (i == BUTTON_TYPE_SIZE)
+@@ -293,7 +308,7 @@ bool InputManager::getButton(Button *button, bool wait) {
+ 	bool screenState = PowerSaver::getInstance()->getScreenState();
+ 	if (wait) {
+ 		PowerSaver::getInstance()->resetScreenTimer();
+-		
++
+ 		// if screen was previously off (false), then don't process the input
+ 		return screenState;
+ 	}
+diff --git a/src/inputmanager.h b/src/inputmanager.h
+index 61dd55f..f031d13 100644
+--- a/src/inputmanager.h
++++ b/src/inputmanager.h
+@@ -47,15 +47,18 @@ struct Joystick {
+ class InputManager {
+ public:
+ 	enum Button {
+-		UP, DOWN, LEFT, RIGHT,
++		UP = 0, DOWN, LEFT, RIGHT,
+ 		ACCEPT, CANCEL,
+ 		ALTLEFT, ALTRIGHT,
+ 		MENU, SETTINGS,
++		POWER,
++		VOL_UP, VOL_DN,
++
++		BUTTON_TYPE_SIZE,
+ 		// Events that are not actually buttons:
+ 		// (not included in BUTTON_TYPE_SIZE)
+-		REPAINT, QUIT,
++		REPAINT = BUTTON_TYPE_SIZE, QUIT,
+ 	};
+-	static constexpr size_t BUTTON_TYPE_SIZE = 10;
+ 
+ 	InputManager(GMenu2X& gmenu2x);
+ 	~InputManager();
+diff --git a/src/powersaver.cpp b/src/powersaver.cpp
+index 56d05f5..b99fc87 100644
+--- a/src/powersaver.cpp
++++ b/src/powersaver.cpp
+@@ -35,10 +35,25 @@ std::shared_ptr<PowerSaver> PowerSaver::getInstance()
+ 
+ PowerSaver::PowerSaver()
+ 	: screenState(false)
++	, suspendAvailable(false)
+ 	, screenTimeout(0)
+ 	, screenTimer(nullptr)
+ {
+ 	enableScreen();
++
++	const char * sysPowerState = "/sys/power/state";
++	int fd = ::open(sysPowerState, O_RDONLY);
++	if (fd != -1) {
++		char buf[64];
++		ssize_t read = ::read(fd, buf, sizeof(buf));
++		if (read == -1) {
++			WARNING("Error reading '%s': %s\n", sysPowerState, ::strerror(errno));
++		}
++		if (::strstr(buf, "mem")) {
++			suspendAvailable = true;
++		}
++		::close(fd);
++	}
+ }
+ 
+ PowerSaver::~PowerSaver() {
+@@ -46,6 +61,27 @@ PowerSaver::~PowerSaver() {
+ 	enableScreen();
+ }
+ 
++void PowerSaver::suspend()
++{
++	if (!suspendAvailable) {
++		return;
++	}
++
++	const char * sysPowerState = "/sys/power/state";
++	int fd = ::open(sysPowerState, O_RDWR);
++	if (fd == -1) {
++		WARNING("Error opening '%s': %s\n", sysPowerState, ::strerror(errno));
++	} else {
++		ssize_t written = ::write(fd, "mem", ::strlen("mem"));
++		if (written == -1) {
++			WARNING("Error writing to '%s': %s\n", sysPowerState, ::strerror(errno));
++		}
++		::close(fd);
++		screenState = false; /* to avoid handling power button at wakeup */
++	}
++}
++
++
+ void PowerSaver::setScreenTimeout(unsigned int seconds) {
+ 	screenTimeout = seconds;
+ 	resetScreenTimer();
+diff --git a/src/powersaver.h b/src/powersaver.h
+index 2868c41..ae712c5 100644
+--- a/src/powersaver.h
++++ b/src/powersaver.h
+@@ -13,6 +13,7 @@ public:
+ 	void setScreenTimeout(unsigned int seconds);
+ 
+ 	bool getScreenState() const { return screenState; }
++	void suspend();
+ 
+ private:
+ 	PowerSaver();
+@@ -26,6 +27,7 @@ private:
+ 	static std::shared_ptr<PowerSaver> instance;
+ 
+ 	bool screenState;
++	bool suspendAvailable;
+ 	unsigned int screenTimeout;
+ 	unsigned int timeout_startms;
+ 	SDL_TimerID screenTimer;
+-- 
+2.34.1
+

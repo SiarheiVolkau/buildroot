@@ -1,0 +1,170 @@
+From 17567adc6dd86e2dd77979611a2bca37d03791c3 Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Mon, 7 Feb 2022 21:31:47 +0300
+Subject: [PATCH 7/8] feat(rzx27): support booting original firmware
+
+whether kernel not found on both MMCs
+---
+ src/board-rzx27.c | 21 -----------
+ src/main.c        | 88 ++++++++++++++++++++++++++++++++++-------------
+ 2 files changed, 65 insertions(+), 44 deletions(-)
+
+diff --git a/src/board-rzx27.c b/src/board-rzx27.c
+index c485957..83c42da 100644
+--- a/src/board-rzx27.c
++++ b/src/board-rzx27.c
+@@ -415,27 +415,6 @@ static void init_smart_lcd_8230(void)
+ 	clear_slcd_screen();
+ 
+ 	__gpio_set_pin(GPIOC, 13);
+-
+-	/* Preparing Smart LCD controller to work in Linux */
+-
+-	/* RS pin */
+-	__gpio_as_func(GPIOD, 19, 2);
+-	/* #WR pin */
+-	__gpio_as_func(GPIOD, 20, 2);
+-	/* #RD pin */
+-	__gpio_as_func(GPIOD, 18, 2);
+-
+-	/* DATA 7..0 */
+-	__gpio_as_func_mask(GPIOD, 0xff, 2);
+-
+-	// Mux Smart pins, enable LCM mode
+-	LCD_REG_CFG = BIT(31) | (0x0d) | BIT(23) | BIT(22) | BIT(21) | BIT(20);
+-	LCD_REG_SCFG = 0x00004d02;
+-	LCD_REG_SCTL = BIT(0);
+-	while (LCD_REG_SSTAT != 0);
+-
+-
+-	__gpio_clear_pin(GPIOC, 13);
+ }
+ #endif
+ 
+diff --git a/src/main.c b/src/main.c
+index 57c3162..fe52960 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -20,6 +20,10 @@
+ #include "jz.h"
+ #include "utils.h"
+ 
++#ifdef USE_SLCD_UC8230
++#include "jz4740-gpio.h"
++#endif
++
+ /* Time how long UBIBoot takes to do its job.
+  * Uses the JZ4770 OST, so won't work on JZ4740.
+  */
+@@ -167,12 +171,62 @@ static void set_mem_param(void)
+ #endif
+ }
+ 
++static int try_boot_from_mmc(int mmc_id, int alt_kernel, void **exec_addr)
++{
++	int ret = mmc_init(mmc_id);
++
++	if (ret != 0) {
++		SERIAL_PUTS_ARGI("MMC", mmc_id, ": No card present\n");
++		return -1;
++	}
++
++	ret = mmc_load_kernel(mmc_id, (void *) (KSEG1 + LD_ADDR), alt_kernel, exec_addr);
++	if (ret < 0) {
++		SERIAL_PUTS_ARGI("MMC", mmc_id, ": No kernel(s) found\n");
++		return 1;
++	} else if (ret == 1)
++		set_alt_param();
++
++#if PASS_ROOTFS_PARAMS
++	static char rootfs_dev[] = "root=/dev/mmcblk_p1";
++	rootfs_dev[16] = '0' + mmc_id;
++	kernel_params[PARAM_ROOTDEV] = rootfs_dev;
++	kernel_params[PARAM_ROOTTYPE] = "rootfstype=vfat";
++	kernel_params[PARAM_ROOTFLAGS] = "rootflags=umask=000";
++#endif
++
++	return 0;
++}
++
++static void boot_to_original_firmware(void)
++{
++	// This code assumes that MMC0 card present
++	// and inited previously
++	// try boot original firmware
++	// the original firmware is located at 256kB offset on SD card.
++	#define ORIG_LD_ADDR (0x00800000)
++	// load 1M bytes into RAM from 512 blocks (256kB) offset on SD card.
++	if (0 == mmc_block_read(0, (void *) (KSEG1 + ORIG_LD_ADDR), 512, 2048)) {
++		SERIAL_PUTS("Trying load original firmware from MMC0.\n");
++
++#ifdef USE_SLCD_UC8230
++		// reset the LCD controller for proper reintialization
++		__gpio_clear_pin(GPIOD, 21);
++		udelay(1000);
++		__gpio_set_pin(GPIOD, 21);
++#endif
++		// jump into firmware
++		void (*entry)(void) = (void (*)(void))(KSEG1 + ORIG_LD_ADDR);
++		entry();
++	}
++}
++
+ typedef void (*kernel_main)(int, char**, char**, int*) __attribute__((noreturn));
+ 
+ void c_main(void)
+ {
+ 	void *exec_addr = NULL;
+-	int mmc_inited, alt_kernel;
++	int ret0, ret1 = -1, alt_kernel;
+ 	extern unsigned int _bss_start, _bss_end;
+ 	unsigned int *ptr;
+ 
+@@ -215,34 +269,22 @@ void c_main(void)
+ 	 * miss and therefore cause no evictions.
+ 	 */
+ 
+-	int id = MMC_ID;
+-	mmc_inited = !mmc_init(MMC_ID);
+-	char *rootfs_dev = "root=/dev/mmcblk0p1";
++	ret0 = try_boot_from_mmc(MMC_ID, alt_kernel, &exec_addr);
+ 
+ #ifdef MMC_ID2
+-	if (!mmc_inited) {
+-		rootfs_dev = "root=/dev/mmcblk1p1";
+-		id = MMC_ID2;
+-		mmc_inited = !mmc_init(MMC_ID2);
+-	}
++	if (ret0 != 0)
++		ret1 = try_boot_from_mmc(MMC_ID2, alt_kernel, &exec_addr);
+ #endif
+ 
+-	if (mmc_inited) {
+-		if (mmc_load_kernel(
+-				id, (void *) (KSEG1 + LD_ADDR), alt_kernel,
+-				&exec_addr) == 1)
+-			set_alt_param();
+-
+-		if (exec_addr) {
+-#if PASS_ROOTFS_PARAMS
+-			kernel_params[PARAM_ROOTDEV] = rootfs_dev;
+-			kernel_params[PARAM_ROOTTYPE] = "rootfstype=vfat";
+-			kernel_params[PARAM_ROOTFLAGS] = "rootflags=umask=000";
++#if MMC_ID == 0
++	if (ret0 == 1 && ret1 != 0)
++		boot_to_original_firmware();
++#elif defined(MMC_ID2) && MMC_ID2 == 0
++	if (ret0 != 0 && ret1 == 1)
++		boot_to_original_firmware();
+ #endif
+-		}
+-	}
+ 
+-	if (!mmc_inited || !exec_addr) {
++	if ((ret0 != 0 && ret1 != 0) || !exec_addr) {
+ 		SERIAL_PUTS("Unable to boot from SD."
+ #ifdef USE_NAND
+ 					" Falling back to NAND."
+-- 
+2.35.1
+

@@ -1,0 +1,31 @@
+From efbddd28a37c167b325fa99fa87f5e8a6909baeb Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Wed, 2 Feb 2022 18:28:57 +0300
+Subject: [PATCH 12/12] ingenic: jz4725b: fix mmc clock gating
+
+The MMC0 clock gate bit is assigned to I2S too, let's fix that.
+According to datasheet there's no separate gate bit for I2S bus.
+---
+ drivers/clk/ingenic/jz4725b-cgu.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/drivers/clk/ingenic/jz4725b-cgu.c b/drivers/clk/ingenic/jz4725b-cgu.c
+index 5154b0cf8ad6..66ff141da0a4 100644
+--- a/drivers/clk/ingenic/jz4725b-cgu.c
++++ b/drivers/clk/ingenic/jz4725b-cgu.c
+@@ -139,11 +139,10 @@ static const struct ingenic_cgu_clk_info jz4725b_cgu_clocks[] = {
+ 	},
+ 
+ 	[JZ4725B_CLK_I2S] = {
+-		"i2s", CGU_CLK_MUX | CGU_CLK_DIV | CGU_CLK_GATE,
++		"i2s", CGU_CLK_MUX | CGU_CLK_DIV,
+ 		.parents = { JZ4725B_CLK_EXT, JZ4725B_CLK_PLL_HALF, -1, -1 },
+ 		.mux = { CGU_REG_CPCCR, 31, 1 },
+ 		.div = { CGU_REG_I2SCDR, 0, 1, 9, -1, -1, -1 },
+-		.gate = { CGU_REG_CLKGR, 6 },
+ 	},
+ 
+ 	[JZ4725B_CLK_SPI] = {
+-- 
+2.34.1
+

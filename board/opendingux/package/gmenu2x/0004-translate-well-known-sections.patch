@@ -1,0 +1,38 @@
+From 578a7dfd078aac6495b7fa3855c96ef163e71080 Mon Sep 17 00:00:00 2001
+From: Siarhei Volkau <lis8215@gmail.com>
+Date: Mon, 24 Jan 2022 13:36:48 +0300
+Subject: [PATCH 4/5] translate well known sections
+
+Signed-off-by: Siarhei Volkau <lis8215@gmail.com>
+---
+ data/translations/Russian | 3 +++
+ src/menu.cpp              | 2 +-
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/data/translations/Russian b/data/translations/Russian
+index a25308d..83406e9 100644
+--- a/data/translations/Russian
++++ b/data/translations/Russian
+@@ -101,3 +101,6 @@ Select a wallpaper from the list=Выберите картинку из спис
+ Show manual of $1=Показать инструкцию к $1
+ Select an icon for this link=Выбрать иконку этому ярлыку
+ Explorer=Проводник
++applications=приложения
++emulators=эмуляторы
++settings=настройки
+diff --git a/src/menu.cpp b/src/menu.cpp
+index 8e86f13..9b6e2b0 100644
+--- a/src/menu.cpp
++++ b/src/menu.cpp
+@@ -174,7 +174,7 @@ void Menu::updateSectionTextSurfaces() {
+ 	const auto &font = *gmenu2x.font;
+ 	section_text_surfaces.resize(sections.size());
+ 	for (std::size_t i = 0; i < sections.size(); ++i)
+-		section_text_surfaces[i] = font.render(sections[i]);
++		section_text_surfaces[i] = font.render(gmenu2x.tr[sections[i]]);
+ }
+ 
+ void Menu::calcSectionRange(int &leftSection, int &rightSection) {
+-- 
+2.34.1
+

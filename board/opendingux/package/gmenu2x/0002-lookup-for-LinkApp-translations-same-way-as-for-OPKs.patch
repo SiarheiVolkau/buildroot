@@ -1,0 +1,40 @@
+From 389b5b77338a8319f033eddd167c309bd0c0104a Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <lis8215@gmail.com>
+Date: Mon, 24 Jan 2022 09:18:24 +0300
+Subject: [PATCH 2/5] lookup for LinkApp translations same way as for OPKs
+
+e.g. "key[lng]=value", localized string has higher priority.
+
+Signed-off-by: Siarhei Volkau <lis8215@gmail.com>
+---
+ src/linkapp.cpp | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/src/linkapp.cpp b/src/linkapp.cpp
+index 0e6104c..306cccd 100644
+--- a/src/linkapp.cpp
++++ b/src/linkapp.cpp
+@@ -238,11 +238,17 @@ LinkApp::LinkApp(GMenu2X& gmenu2x, string const& linkfile, bool deletable)
+ 		} else if (name == "selectorbrowser") {
+ 			if (value=="false") selectorbrowser = false;
+ 		} else if (!isOpk()) {
+-			if (name == "title") {
++			if (name == "title" && getTitle().empty()) {
+ 				setTitle(value);
+-			} else if (name == "description") {
++			} else if (name == "title[" + gmenu2x.tr["Lng"] +"]") {
++				setTitle(value);
++			} else if (name == "description" && getDescription().empty()) {
++				setDescription(value);
++			} else if (name == "description[" + gmenu2x.tr["Lng"] +"]") {
+ 				setDescription(value);
+-			} else if (name == "launchmsg") {
++			} else if (name == "launchmsg" && launchMsg.empty()) {
++				launchMsg = value;
++			} else if (name == "launchmsg[" + gmenu2x.tr["Lng"] +"]") {
+ 				launchMsg = value;
+ 			} else if (name == "icon") {
+ 				setIcon(value);
+-- 
+2.34.1
+

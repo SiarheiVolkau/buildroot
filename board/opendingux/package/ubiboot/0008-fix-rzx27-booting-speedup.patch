@@ -1,0 +1,77 @@
+From 39ebdd119efd8b28059a8912e18ce9c48c4aa7c3 Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Sat, 12 Feb 2022 11:07:52 +0300
+Subject: [PATCH 8/8] fix(rzx27): booting speedup
+
+by initializing LCD after PLL
+---
+ src/board-rzx27.c | 27 +++++++++++++++------------
+ 1 file changed, 15 insertions(+), 12 deletions(-)
+
+diff --git a/src/board-rzx27.c b/src/board-rzx27.c
+index 83c42da..ee69baf 100644
+--- a/src/board-rzx27.c
++++ b/src/board-rzx27.c
+@@ -315,15 +315,15 @@ static void read_slcd_chip_id(void)
+ 	// set all data lanes as 0x00
+ 	__gpio_clear_pin_mask(GPIOD, 0xFF);
+ 	// issue #WR twice
+-	udelay(10);
++	udelay(20);
+ 	__gpio_clear_pin(GPIOD, 20);
+-	udelay(10);
++	udelay(20);
+ 	__gpio_set_pin(GPIOD, 20);
+-	udelay(10);
++	udelay(20);
+ 	__gpio_clear_pin(GPIOD, 20);
+-	udelay(10);
++	udelay(20);
+ 	__gpio_set_pin(GPIOD, 20);
+-	udelay(10);
++	udelay(20);
+ 
+ 	// set data lanes as gpio input
+ 	__gpio_as_input_mask(GPIOD, 0xff);
+@@ -359,7 +359,9 @@ static void clear_slcd_screen(void)
+ 	__gpio_clear_pin_mask(GPIOD, 0xFF);
+ 
+ 	for (i = 0; i < 240 * 320 * 2; i++) {
++		udelay(5);
+ 		__gpio_clear_pin(GPIOD, 20);
++		udelay(5);
+ 		__gpio_set_pin(GPIOD, 20);
+ 	}
+ 
+@@ -445,6 +447,14 @@ void board_init(void)
+ 
+ 	serial_init();
+ #endif
++
++	pll_init();
++	SERIAL_PUTS_ARGI("PLL running at ", __cpm_get_pllout() / 1000000, " MHz.\n");
++
++	sdram_init();
++	SERIAL_PUTS_ARGI("SDRAM running at ", __cpm_get_mclk() / 1000000, " MHz.\n");
++	SERIAL_PUTS_ARGI("SDRAM size is ", get_memory_size() / 1048576, " MiB.\n");
++
+ #ifdef USE_SLCD_UC8230
+ 	/* ungate the LCD/SLCD clock */
+ 	REG_CPM_CLKGR &= ~BIT(9);
+@@ -456,13 +466,6 @@ void board_init(void)
+ 	__gpio_as_output(GPIOC, 15);
+ #endif
+ 
+-	pll_init();
+-	SERIAL_PUTS_ARGI("PLL running at ", __cpm_get_pllout() / 1000000, " MHz.\n");
+-
+-	sdram_init();
+-	SERIAL_PUTS_ARGI("SDRAM running at ", __cpm_get_mclk() / 1000000, " MHz.\n");
+-	SERIAL_PUTS_ARGI("SDRAM size is ", get_memory_size() / 1048576, " MiB.\n");
+-
+ 	/* Ungate MSC0/1 clock */
+ 	REG_CPM_CLKGR &= ~(BIT(6) | BIT(16));
+ 
+-- 
+2.35.1
+

@@ -1,0 +1,44 @@
+From 18b1e31e8b0ba110c641b9ab39bc923eaa2a62bc Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Sat, 29 Jan 2022 10:43:58 +0300
+Subject: [PATCH 10/12] rzx-27: fix suspend to ram
+
+---
+ drivers/base/power/main.c | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/base/power/main.c b/drivers/base/power/main.c
+index 46793276598d..8a7ce7b01893 100644
+--- a/drivers/base/power/main.c
++++ b/drivers/base/power/main.c
+@@ -989,6 +989,17 @@ static void async_resume(void *data, async_cookie_t cookie)
+ 	put_device(dev);
+ }
+ 
++/* HACK HACK HACK those drivers prevent suspend
++ * to work properly on jz4725b */
++static bool need_to_be_skipped(const char* devname)
++{
++	if (strstr(devname, "mmc1:0") != NULL)
++		return true;
++	if (strstr(devname, "mmc0:0") != NULL)
++		return true;
++	return false;
++}
++
+ /**
+  * dpm_resume - Execute "resume" callbacks for non-sysdev devices.
+  * @state: PM transition of the system being carried out.
+@@ -1755,7 +1766,8 @@ int dpm_suspend(pm_message_t state)
+ 		get_device(dev);
+ 		mutex_unlock(&dpm_list_mtx);
+ 
+-		error = device_suspend(dev);
++		if (!need_to_be_skipped(dev_name(dev)))
++			error = device_suspend(dev);
+ 
+ 		mutex_lock(&dpm_list_mtx);
+ 		if (error) {
+-- 
+2.34.1
+
