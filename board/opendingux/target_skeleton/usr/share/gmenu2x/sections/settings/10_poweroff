@@ -1,6 +1,9 @@
 title=Power Off
 description=Shut down the system
+title[ru]=Выключить
+description[ru]=Выключить устройство
 launchmsg=Powering off
+launchmsg[ru]=Выключаюсь...
 icon=skin:icons/poweroff.png
 exec=/sbin/poweroff
 editable=false

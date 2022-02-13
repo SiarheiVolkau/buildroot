@@ -1,6 +1,9 @@
 title=Reboot
 description=Reboot the system
+title[ru]=Перезагрузка
+description[ru]=Перезагрузить устройство
 launchmsg=Rebooting
+launchmsg[ru]=Перезагружаюсь...
 icon=skin:icons/reboot.png
 exec=/sbin/reboot
 editable=false

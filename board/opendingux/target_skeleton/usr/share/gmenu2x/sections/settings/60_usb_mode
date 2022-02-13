@@ -1,5 +1,7 @@
 title=USB Mode
 description=Change the USB mode
+title[ru]=Режим USB
+description[ru]=Сменить режим работы USB
 icon=skin:icons/usb.png
 exec=/usr/bin/usb-chooser
 consoleapp=true

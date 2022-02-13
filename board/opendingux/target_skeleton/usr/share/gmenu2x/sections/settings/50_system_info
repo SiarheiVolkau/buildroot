@@ -1,6 +1,8 @@
 title=System Info
 description=Info about the system
 icon=skin:icons/system-info.png
+title[ru]=О системе
+description[ru]=Информация о системе
 exec=/usr/bin/dialog
 params=--ok-label "Press START to exit" --no-shadow --msgbox "`/usr/bin/system_info`" 240 320
 consoleapp=true
