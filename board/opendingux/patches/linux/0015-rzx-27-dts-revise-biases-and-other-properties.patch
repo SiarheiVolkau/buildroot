@@ -1,0 +1,82 @@
+From 55face9cfbd32382f12d6b11215c2a2bbacae152 Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Sat, 19 Feb 2022 15:04:31 +0300
+Subject: [PATCH 2/2] rzx-27: dts: revise biases and other properties
+
+---
+ arch/mips/boot/dts/ingenic/rzx27.dts | 25 +++++++++++++++++++++++--
+ 1 file changed, 23 insertions(+), 2 deletions(-)
+
+diff --git a/arch/mips/boot/dts/ingenic/rzx27.dts b/arch/mips/boot/dts/ingenic/rzx27.dts
+index c2f843ae27c7..0ee05167c80a 100644
+--- a/arch/mips/boot/dts/ingenic/rzx27.dts
++++ b/arch/mips/boot/dts/ingenic/rzx27.dts
+@@ -12,7 +12,7 @@ / {
+ 	model = "Ritmix RZX-27";
+ 
+ 	chosen {
+-		bootargs = "root=/dev/mmcblk0p1 rw rootwait init=/sbin/init clk_ignore_unused";
++		bootargs = "root=/dev/mmcblk0p1 rw rootwait init=/mininit-syspart";
+ 	};
+ 
+ 	memory {
+@@ -49,6 +49,8 @@ gpio_keys: keys@0 {
+ 		#address-cells = <1>;
+ 		#size-cells = <0>;
+ 
++		pinctrl-names = "default";
++		pinctrl-0 = <&pins_keys>;
+ 		autorepeat;
+ 
+ 		key@0 {
+@@ -337,9 +339,21 @@ &udc {
+ };
+ 
+ &pinctrl {
++	pins_mmc0: mmc0 {
++		function = "mmc0";
++		groups = "mmc0-4bit";
++		bias-disable;
++	};
++
+ 	pins_mmc1: mmc1 {
+ 		function = "mmc1";
+ 		groups = "mmc1-1bit";
++		bias-disable;
++	};
++
++	pins_mmc1_cd: mmc1@cd {
++		pins = "PD25";
++		bias-disable;
+ 	};
+ 
+ 	pins_pwm5_sleep: pwm5-sleep {
+@@ -380,9 +394,16 @@ pins_amplifier: gpio@pd23 {
+ 		pins = "PD23";
+ 		bias-disable;
+ 	};
++	pins_keys: gpios@keys {
++		pins = "PC30", "PC31";
++		bias-disable;
++	};
+ };
+ 
+ &mmc0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pins_mmc0>;
++
+ 	bus-width = <4>;
+ 	status = "okay";
+ };
+@@ -392,7 +413,7 @@ &mmc1 {
+ 	max-frequency = <48000000>;
+ 
+ 	pinctrl-names = "default";
+-	pinctrl-0 = <&pins_mmc1>;
++	pinctrl-0 = <&pins_mmc1>, <&pins_mmc1_cd>;
+ 
+ 	cd-gpios = <&gpd 25 GPIO_ACTIVE_LOW>;
+ };
+-- 
+2.35.1
+

@@ -1,0 +1,365 @@
+From a91f2c81a71956240e039d5998a56043d3768034 Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Wed, 16 Feb 2022 10:39:26 +0300
+Subject: [PATCH 1/2] rzx27: video: panel reset while suspend to save power
+
+TODO: It is restored not properly sometimes
+---
+ arch/mips/boot/dts/ingenic/rzx27.dts |  20 ++-
+ drivers/video/fbdev/jz4740_slcd.h    |   1 +
+ drivers/video/fbdev/jz4740_slcd_fb.c | 196 ++++++++++++++++++---------
+ 3 files changed, 150 insertions(+), 67 deletions(-)
+
+diff --git a/arch/mips/boot/dts/ingenic/rzx27.dts b/arch/mips/boot/dts/ingenic/rzx27.dts
+index 4c9195317449..c2f843ae27c7 100644
+--- a/arch/mips/boot/dts/ingenic/rzx27.dts
++++ b/arch/mips/boot/dts/ingenic/rzx27.dts
+@@ -315,10 +315,11 @@ slcd: slcd-controller@13050000 {
+ 
+ &slcd {
+ 	pinctrl-names = "default";
+-	pinctrl-0 = <&pins_slcd>, <&pins_slcd_cs>;
++	pinctrl-0 = <&pins_slcd>, <&pins_slcd_ctl>, <&pins_slcd_rs>;
+ 	backlight = <&backlight>;
+ 
+-	cs-gpios = <&gpc 13 GPIO_ACTIVE_LOW>;
++	cs-gpios = <&gpc 13 GPIO_ACTIVE_HIGH>;
++	reset-gpios = <&gpd 21 GPIO_ACTIVE_LOW>;
+ 
+ 	status = "okay";
+ };
+@@ -354,13 +355,20 @@ pins_pwm5: pwm5 {
+ 	};
+ 
+ 	pins_slcd: slcd {
+-		function = "lcd";
+-		groups = "lcd-8bit";
++		function = "slcd";
++		groups = "slcd-8bit";
++		bias-disable;
++	};
++
++	pins_slcd_ctl: panel@ctl {
++		pins = "PC13", "PD21";
++		bias-disable;
+ 	};
+ 
+-	pins_slcd_cs: gpio@pc13 {
+-		pins = "PC13";
++	pins_slcd_rs: panel@pd18 {
++		pins = "PD18";
+ 		bias-disable;
++		output-high;
+ 	};
+ 
+ 	pins_charger: gpio@pd12 {
+diff --git a/drivers/video/fbdev/jz4740_slcd.h b/drivers/video/fbdev/jz4740_slcd.h
+index 17500e8d045e..76308a98be18 100644
+--- a/drivers/video/fbdev/jz4740_slcd.h
++++ b/drivers/video/fbdev/jz4740_slcd.h
+@@ -167,6 +167,7 @@ struct jzfb {
+ 	struct clk *ldclk;
+ 	struct clk *lpclk;
+ 	struct gpio_desc *cs;
++	struct gpio_desc *rst;
+ 
+ 	unsigned is_enabled:1;
+ 	struct mutex lock; /* Protecting against running enable/disable in paralell */
+diff --git a/drivers/video/fbdev/jz4740_slcd_fb.c b/drivers/video/fbdev/jz4740_slcd_fb.c
+index 355c369f2dfa..58d9804247ac 100644
+--- a/drivers/video/fbdev/jz4740_slcd_fb.c
++++ b/drivers/video/fbdev/jz4740_slcd_fb.c
+@@ -39,6 +39,95 @@ static struct fb_fix_screeninfo jzfb_fix = {
+ 	.accel =	FB_ACCEL_NONE,
+ };
+ 
++#define CMD_END    (~0U)
++#define CMD_DELAY  (CMD_END - 1U)
++#define CMD_RESET  (CMD_END - 2U)
++static const u32 uc8230_init_sequence[] = {
++	/* register/cmd  | value */
++	CMD_RESET,	1,
++	CMD_DELAY,	10,
++	CMD_RESET,	0,
++	CMD_DELAY,	100, //at least 100ms
++	0x0046,		0x0002, //MTP Disable
++	0x0010,		0x1590, //SAP=1, BT=5, APE=1, AP=1
++	0x0011,		0x0227, //DC1=2, DC0=2, VC=7
++	0x0012,		0x80ff, //P5VMD=1, PON=7, VRH=15
++	0x0013,		0x9F31, //VDV=31, VCM=49
++	CMD_DELAY,	10, //at least 10ms
++	0x0003,		0x1038, //set GRAM writing direction & BGR=1
++	0x0060,		0xa700, //GS; gate scan: start position & drive line Q'ty - mirrors across vertical center line
++	0x0061,		0x0001, //REV, NDL, VLE - mandatory to have normal colors
++	0x0020,		0x0000, //GRAM horizontal address
++	0x0021,		0x0000, //GRAM vertical address
++	0x0050,		0x0000, // write window y-start 0
++	0x0051,		240 -1, // write window y-end 240-1 (whole y size)
++	0x0052,		0x0000, // write window x-start 0
++	0x0053,		320 -1, // write window x-end 320-1 (whole x size)
++	0x0080,		0x0000,
++	0x0081,		0x0000,
++	0x0082,		0x0000,
++	0x0083,		0x0000,
++	0x0084,		0x0000,
++	0x0085,		0x0000,
++	0x0092,		0x0200,
++	0x0093,		0x0303,
++	0x0090,		0x0010, //set clocks/Line
++	0x000C,		0x0000,
++	0x0000,		0x0001,
++	CMD_DELAY,	20, // Delay 200 ms
++	0x0007,		0x0173, //Display on setting
++	CMD_END,
++};
++
++static const u32 uc8230_suspend_sequence[] = {
++	/* register/cmd  | value */
++	CMD_RESET,	1,
++	CMD_DELAY,	10,
++	CMD_RESET,	0,
++	// init sequence needed at resume
++	CMD_END,
++};
++
++/* FIXME add support of of N-bit wide commands */
++/* now it supports 16-bit cmds thru 8-bit iface only */
++static void jzfb_write_panel_command(struct jzfb *jzfb, u16 cmd)
++{
++	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
++	writel(BIT(31) | (cmd >> 8), jzfb->base + JZ_REG_SLCD_DATA);
++	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
++	writel(BIT(31) | (cmd & 0xff), jzfb->base + JZ_REG_SLCD_DATA);
++}
++
++/* FIXME add support of of N-bit wide datas */
++/* now it supports 16-bit data thru 8-bit iface only */
++static void jzfb_write_panel_data(struct jzfb *jzfb, u16 data)
++{
++	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
++	writel(data, jzfb->base + JZ_REG_SLCD_DATA);
++}
++
++static void jzfb_exec_commands_sequence(struct jzfb *jzfb, const u32* cmds)
++{
++	gpiod_set_value_cansleep(jzfb->cs, 0);
++
++	while (cmds[0] != CMD_END) {
++		if (cmds[0] == CMD_DELAY) {
++			msleep(cmds[1]);
++		} else if (cmds[0] == CMD_RESET) {
++			if (jzfb->rst) {
++				gpiod_set_value_cansleep(jzfb->rst, cmds[1]);
++			}
++		} else {
++			jzfb_write_panel_command(jzfb, *cmds);
++			jzfb_write_panel_data(jzfb, cmds[1]);
++		}
++		cmds += 2;
++	}
++	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
++	gpiod_set_value_cansleep(jzfb->cs, 1);
++}
++
++
+ static int jzfb_setcolreg(unsigned regno, unsigned red, unsigned green,
+ 			unsigned blue, unsigned transp, struct fb_info *fb)
+ {
+@@ -154,6 +243,10 @@ static void jzfb_stop_controller(struct jzfb *jzfb)
+ 	ctrl &= ~JZ_LCD_CTRL_ENABLE;
+ 	ctrl |= JZ_LCD_CTRL_DISABLE;
+ 	writel(ctrl, jzfb->base + JZ_REG_LCD_CTRL);
++
++	ctrl = readb(jzfb->base + JZ_REG_SLCD_CTRL);
++	ctrl &= ~SLCD_CTRL_DMA_EN;
++	writeb(ctrl, jzfb->base + JZ_REG_SLCD_CTRL);
+ }
+ 
+ static void jzfb_upload_frame_dma(struct jzfb *jzfb)
+@@ -168,35 +261,16 @@ static void jzfb_upload_frame_dma(struct jzfb *jzfb)
+ 	dma_cache_sync(fb->device, jzfb->vidmem + offset, size,
+ 		       DMA_TO_DEVICE);
+ 
+-	gpiod_set_value(jzfb->cs, GPIOD_OUT_HIGH);
+-
+-	// reset the write position horizontal & vertical
+-	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
+-	writel(BIT(31) | 0x00, jzfb->base + JZ_REG_SLCD_DATA);
+-	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
+-	writel(BIT(31) | 0x20, jzfb->base + JZ_REG_SLCD_DATA);
+-
+-	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
+-	writel(0x00, jzfb->base + JZ_REG_SLCD_DATA);
+-	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
+-	writel(0x00, jzfb->base + JZ_REG_SLCD_DATA);
++	gpiod_set_value_cansleep(jzfb->cs, 0);
+ 
+ 	// reset the write position horizontal & vertical
+-	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
+-	writel(BIT(31) | 0x00, jzfb->base + JZ_REG_SLCD_DATA);
+-	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
+-	writel(BIT(31) | 0x21, jzfb->base + JZ_REG_SLCD_DATA);
+-
+-	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
+-	writel(0x00, jzfb->base + JZ_REG_SLCD_DATA);
+-	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
+-	writel(0x00, jzfb->base + JZ_REG_SLCD_DATA);
++	jzfb_write_panel_command(jzfb, 0x0020);
++	jzfb_write_panel_data(jzfb, 0x0000);
++	jzfb_write_panel_command(jzfb, 0x0021);
++	jzfb_write_panel_data(jzfb, 0x0000);
+ 
+ 	// set the write address to GRAM
+-	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
+-	writel(BIT(31) | 0x00, jzfb->base + JZ_REG_SLCD_DATA);
+-	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
+-	writel(BIT(31) | 0x22, jzfb->base + JZ_REG_SLCD_DATA);
++	jzfb_write_panel_command(jzfb, 0x0022);
+ 
+ 	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
+ 	writeb(readb(jzfb->base + JZ_REG_SLCD_CTRL) | SLCD_CTRL_DMA_EN,
+@@ -211,49 +285,26 @@ static void jzfb_upload_frame_dma(struct jzfb *jzfb)
+ 	ctrl &= ~JZ_LCD_CTRL_DISABLE;
+ 	writel(ctrl, jzfb->base + JZ_REG_LCD_CTRL);
+ }
+-#if 0 // CPU_MODE
+-static void jzfb_upload_frame_cpu(struct jzfb *jzfb)
+-{
+-	const int num_pixels = jzfb->fb->mode->xres * jzfb->fb->mode->yres;
+-	uint16_t *p = jzfb->vidmem;
+-	int i;
+-
+-	gpiod_set_value(jzfb->cs, GPIOD_OUT_HIGH);
+-	for (i = 0; i < num_pixels; i++) {
+-		uint16_t rgb = *p++;
+-		while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
+-		writel(SLCD_DATA_RS_DATA | rgb, jzfb->base + JZ_REG_SLCD_DATA);
+-	}
+-	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
+-	gpiod_set_value(jzfb->cs, GPIOD_OUT_LOW);
+-}
+-#endif
+ 
+ static void jzfb_refresh_work(struct work_struct *work)
+ {
+ 	struct jzfb *jzfb = container_of(work, struct jzfb, refresh_work.work);
+ 
+ 	mutex_lock(&jzfb->lock);
+-	if (jzfb->is_enabled) {
+-		int interval;
+ 
++	/* checking possibility to disable CS
++	 * due to lack to do so in IRQ context */
++	while (readb(jzfb->base + JZ_REG_SLCD_STATE) & SLCD_STATE_BUSY);
++	gpiod_set_value_cansleep(jzfb->cs, 1);
++
++	if (jzfb->is_enabled) {
+ 		if (jzfb->dma_completion.done) {
+-			if (jzfb->refresh_on_pan)
+-				interval = HZ / 5;
+-			else
+-				interval = HZ / 60;
+ 			jzfb->refresh_on_pan = 0;
+ 
+-			//init_completion(&jzfb->dma_completion);
+ 			jzfb_upload_frame_dma(jzfb);
++			schedule_delayed_work(&jzfb->refresh_work, DIV_ROUND_UP(HZ, 60));
+ 		} else
+-			interval = 1;
+-
+-		schedule_delayed_work(&jzfb->refresh_work, interval);
+-#if 0 // CPU_MODE
+-		jzfb_upload_frame_cpu(jzfb);
+-		schedule_delayed_work(&jzfb->refresh_work, HZ / 10);
+-#endif
++			schedule_delayed_work(&jzfb->refresh_work, 1U);
+ 	}
+ 	mutex_unlock(&jzfb->lock);
+ }
+@@ -424,6 +475,8 @@ static void jzfb_enable(struct jzfb *jzfb)
+ 
+ 	clk_enable(jzfb->ldclk);
+ 
++	jzfb_exec_commands_sequence(jzfb, uc8230_init_sequence);
++
+ #if 0 // looks dangerous
+ 	writel(0, jzfb->base + JZ_REG_LCD_STATE);
+ 	jzfb_stop_controller(jzfb);
+@@ -445,10 +498,12 @@ static void jzfb_disable(struct jzfb *jzfb)
+ 
+ 	/* Abort any transfer that might be in progress and allow direct
+ 	   writes to the panel. */
+-	//jzfb_stop_controller(jzfb);
++	jzfb_stop_controller(jzfb);
+ 
+ 	complete_all(&jzfb->dma_completion);
+ 
++	jzfb_exec_commands_sequence(jzfb, uc8230_suspend_sequence);
++
+ 	clk_disable(jzfb->ldclk);
+ }
+ 
+@@ -620,7 +675,6 @@ static irqreturn_t jz4740_lcd_irq(int irq, void *dev_id)
+ 	unsigned long state = readl(jzfb->base + JZ_REG_LCD_STATE);
+ 
+ 	if (state & JZ_LCD_STATE_SOF) {
+-		//init_completion(&jzfb->dma_completion);
+ 		state &= ~JZ_LCD_STATE_SOF;
+ 	} else {
+ 		complete_all(&jzfb->dma_completion);
+@@ -631,7 +685,11 @@ static irqreturn_t jz4740_lcd_irq(int irq, void *dev_id)
+ 			while ((readl(jzfb->base + JZ_REG_LCD_STATE) & BIT(7)) == 0);
+ 		}
+ 		writel(jzfb->framedesc_phys, jzfb->base + JZ_REG_LCD_DA0);
+-		gpiod_set_value(jzfb->cs, GPIOD_OUT_LOW);
++		/* actually transfer still going due to pipeline and DMA
++		 * here we can wait till SLCD !BUSY but it have no sense
++		 * to do as next frame will start from checking that bit
++		 */
++		/* gpiod_set_value(jzfb->cs, 1); */
+ 		state &= ~JZ_LCD_STATE_EOF;
+ 	}
+ 
+@@ -719,11 +777,23 @@ static int jzfb_probe(struct platform_device *pdev)
+ 	init_completion(&jzfb->dma_completion);
+ 	complete_all(&jzfb->dma_completion);
+ 
+-	jzfb->cs = devm_gpiod_get_index(&pdev->dev, "cs", 0, GPIOD_OUT_LOW);
++	jzfb->cs = devm_gpiod_get(&pdev->dev, "cs", GPIOD_ASIS);
++	if (IS_ERR_OR_NULL(jzfb->cs)) {
++		ret = PTR_ERR(jzfb->cs) ? PTR_ERR(jzfb->cs) : -EINVAL;
++		jzfb->cs = NULL;
++	}
+ 	if (!jzfb->cs) {
+ 		dev_err(&pdev->dev, "Failed to request CS GPIO\n");
+ 		goto err_framebuffer_release;
+ 	}
++	gpiod_direction_output(jzfb->cs, 1);
++
++	jzfb->rst = devm_gpiod_get(&pdev->dev, "reset", GPIOD_ASIS);
++	if (IS_ERR_OR_NULL(jzfb->rst)) {
++		jzfb->rst = NULL;
++		dev_warn(&pdev->dev, "Failed to request Reset GPIO\n");
++	} else
++		gpiod_direction_output(jzfb->rst, 1);
+ 
+ 	jzfb->ldclk = devm_clk_get(&pdev->dev, "lcd");
+ 	if (IS_ERR(jzfb->ldclk)) {
+@@ -801,9 +871,13 @@ static int jzfb_probe(struct platform_device *pdev)
+ 
+ 	jzfb_stop_controller(jzfb);
+ 
++	clk_enable(jzfb->ldclk);
++	clk_enable(jzfb->lpclk);
++	jzfb_exec_commands_sequence(jzfb, uc8230_init_sequence);
++
+ 	fb->bl_dev = devm_of_find_backlight(&pdev->dev);
+ 
+-	if (IS_ERR(fb->bl_dev)) {
++	if (IS_ERR_OR_NULL(fb->bl_dev)) {
+ 		dev_warn(&pdev->dev, "Failed to get backlight node, error %d", (int)PTR_ERR(fb->bl_dev));
+ 		fb->bl_dev = NULL;
+ 	} else {
+-- 
+2.35.1
+

@@ -1,0 +1,56 @@
+From 73ccdfde659097bd14401429896fe9daf7d58236 Mon Sep 17 00:00:00 2001
+From: Sergey Volkov <Sergey.Volkov@promwad.com>
+Date: Sat, 19 Feb 2022 14:50:17 +0300
+Subject: [PATCH] pinctrl: jz4725b: add extra pin mode for smart LCD
+
+which doesn't use LCD_CLK (PD18) pin as most smart panels with
+parallel interface doesn't require external clock and may use
+this pin for another purposes #RD for example
+---
+ drivers/pinctrl/pinctrl-ingenic.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/pinctrl/pinctrl-ingenic.c b/drivers/pinctrl/pinctrl-ingenic.c
+index 2712f51..56306d8 100644
+--- a/drivers/pinctrl/pinctrl-ingenic.c
++++ b/drivers/pinctrl/pinctrl-ingenic.c
+@@ -348,6 +348,10 @@ static int jz4725b_lcd_8bit_pins[] = {
+ 	0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67,
+ 	0x72, 0x73, 0x74,
+ };
++static int jz4725b_slcd_8bit_pins[] = {
++	0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67,
++	0x73, 0x74,
++};
+ static int jz4725b_lcd_16bit_pins[] = {
+ 	0x68, 0x69, 0x6a, 0x6b, 0x6c, 0x6d, 0x6e, 0x6f,
+ };
+@@ -383,6 +387,7 @@ static const struct group_desc jz4725b_groups[] = {
+ 	INGENIC_PIN_GROUP("lcd-24bit", jz4725b_lcd_24bit, 1),
+ 	INGENIC_PIN_GROUP("lcd-special", jz4725b_lcd_special, 0),
+ 	INGENIC_PIN_GROUP("lcd-generic", jz4725b_lcd_generic, 0),
++	INGENIC_PIN_GROUP("slcd-8bit", jz4725b_slcd_8bit, 0),
+ 	INGENIC_PIN_GROUP("nand-cs1", jz4725b_nand_cs1, 0),
+ 	INGENIC_PIN_GROUP("nand-cs2", jz4725b_nand_cs2, 0),
+ 	INGENIC_PIN_GROUP("nand-cs3", jz4725b_nand_cs3, 0),
+@@ -404,6 +409,9 @@ static const char *jz4725b_lcd_groups[] = {
+ 	"lcd-8bit", "lcd-16bit", "lcd-18bit", "lcd-24bit",
+ 	"lcd-special", "lcd-generic",
+ };
++static const char *jz4725b_slcd_groups[] = {
++	"slcd-8bit",
++};
+ static const char *jz4725b_nand_groups[] = {
+ 	"nand-cs1", "nand-cs2", "nand-cs3", "nand-cs4",
+ 	"nand-cle-ale", "nand-fre-fwe",
+@@ -427,6 +435,7 @@ static const struct function_desc jz4725b_functions[] = {
+ 	{ "pwm4", jz4725b_pwm4_groups, ARRAY_SIZE(jz4725b_pwm4_groups), },
+ 	{ "pwm5", jz4725b_pwm5_groups, ARRAY_SIZE(jz4725b_pwm5_groups), },
+ 	{ "lcd", jz4725b_lcd_groups, ARRAY_SIZE(jz4725b_lcd_groups), },
++	{ "slcd", jz4725b_slcd_groups, ARRAY_SIZE(jz4725b_slcd_groups), },
+ };
+ 
+ static const struct ingenic_chip_info jz4725b_chip_info = {
+-- 
+2.35.1
+
